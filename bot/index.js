@@ -3,24 +3,26 @@ require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const admin = require("firebase-admin");
 
-// 🔥 Firebase JSON file (bot folder ውስጥ መኖር አለበት)
-const serviceAccount = require("./serviceAccount.json");
+// 🔐 ENV
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const ADMIN = process.env.ADMIN_ID;
 
-// 🔥 Firebase init
+// 🤖 Telegram Bot
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+
+// 🔥 Firebase (FROM .env JSON)
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY)),
   databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com/"
 });
 
 const db = admin.database();
 
-// 🔥 Telegram bot
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
-
-const ADMIN = process.env.ADMIN_ID;
-
-/* START */
+/* =========================
+   START
+========================= */
 bot.onText(/\/start/, (msg) => {
+
   bot.sendMessage(msg.chat.id, "🎁 Package ምረጥ", {
     reply_markup: {
       inline_keyboard: [
@@ -30,55 +32,68 @@ bot.onText(/\/start/, (msg) => {
       ]
     }
   });
+
 });
 
-/* PACKAGE SELECT */
+/* =========================
+   PACKAGE SELECT
+========================= */
 bot.on("callback_query", async (q) => {
-  let amount = q.data.split("_")[1];
-  let user = q.from.id.toString();
 
-  let id = Date.now().toString();
+  try {
+    let amount = q.data.split("_")[1];
+    let user = q.from.id.toString();
+    let id = Date.now().toString();
 
-  await db.ref("payments/" + id).set({
-    user,
-    amount: Number(amount),
-    status: "waiting_proof",
-    time: Date.now()
-  });
+    await db.ref("payments/" + id).set({
+      user,
+      amount: Number(amount),
+      status: "waiting_proof",
+      time: Date.now()
+    });
 
-  bot.sendMessage(q.message.chat.id,
+    bot.sendMessage(q.message.chat.id,
 `💰 ${amount} ብር
 
 📲 Telebirr: 09XXXXXXXX
 🏦 CBE: 1000XXXXXXXX
 
 📤 screenshot ላክ`
-  );
+    );
+
+  } catch (err) {
+    console.log(err);
+  }
+
 });
 
-/* RECEIVE PHOTO */
+/* =========================
+   PHOTO (SCREENSHOT)
+========================= */
 bot.on("photo", async (msg) => {
-  let user = msg.from.id.toString();
 
-  let fileId = msg.photo[msg.photo.length - 1].file_id;
-  let file = await bot.getFileLink(fileId);
+  try {
+    let user = msg.from.id.toString();
 
-  let snap = await db.ref("payments")
-    .orderByChild("user")
-    .equalTo(user)
-    .once("value");
+    let fileId = msg.photo[msg.photo.length - 1].file_id;
+    let file = await bot.getFileLink(fileId);
 
-  let data = snap.val();
-  if(!data) return;
+    let snap = await db.ref("payments")
+      .orderByChild("user")
+      .equalTo(user)
+      .once("value");
 
-  let lastKey = Object.keys(data).pop();
+    let data = snap.val();
+    if (!data) return;
 
-  await db.ref("payments/" + lastKey).update({
-    photo: file,
-    status: "pending"
-  });
+    let lastKey = Object.keys(data).pop();
 
-  bot.sendMessage(ADMIN,
+    await db.ref("payments/" + lastKey).update({
+      photo: file,
+      status: "pending"
+    });
+
+    bot.sendMessage(ADMIN,
 `📥 New Payment
 
 👤 User: ${user}
@@ -90,45 +105,72 @@ Approve:
 
 Reject:
 /reject ${lastKey}`
-  );
+    );
 
-  bot.sendMessage(msg.chat.id, "⏳ በመጠበቅ ላይ...");
+    bot.sendMessage(msg.chat.id, "⏳ በመጠበቅ ላይ...");
+
+  } catch (err) {
+    console.log(err);
+  }
+
 });
 
-/* APPROVE */
+/* =========================
+   APPROVE
+========================= */
 bot.onText(/\/approve (.+)/, async (msg, match) => {
-  if(msg.from.id.toString() !== ADMIN) return;
 
-  let id = match[1];
+  try {
+    if (msg.from.id.toString() !== ADMIN) return;
 
-  let ref = db.ref("payments/" + id);
-  let snap = await ref.once("value");
-  let data = snap.val();
+    let id = match[1];
 
-  if(!data) return;
+    let ref = db.ref("payments/" + id);
+    let snap = await ref.once("value");
+    let data = snap.val();
 
-  let userRef = db.ref("users/" + data.user + "/balance");
+    if (!data) return;
 
-  let userSnap = await userRef.once("value");
-  let current = userSnap.val() || 0;
+    let userRef = db.ref("users/" + data.user + "/balance");
 
-  await userRef.set(current + data.amount);
+    let userSnap = await userRef.once("value");
+    let current = userSnap.val() || 0;
 
-  await ref.update({ status: "approved" });
+    await userRef.set(current + data.amount);
 
-  bot.sendMessage(data.user, "✅ ብር ገብቷል!");
+    await ref.update({ status: "approved" });
+
+    bot.sendMessage(data.user, "✅ ብር ገብቷል!");
+
+  } catch (err) {
+    console.log(err);
+  }
+
 });
 
-/* REJECT */
+/* =========================
+   REJECT
+========================= */
 bot.onText(/\/reject (.+)/, async (msg, match) => {
-  if(msg.from.id.toString() !== ADMIN) return;
 
-  let id = match[1];
+  try {
+    if (msg.from.id.toString() !== ADMIN) return;
 
-  await db.ref("payments/" + id).update({
-    status: "rejected"
-  });
+    let id = match[1];
+
+    await db.ref("payments/" + id).update({
+      status: "rejected"
+    });
+
+  } catch (err) {
+    console.log(err);
+  }
+
 });
 
-/* TEST */
+/* =========================
+   ERROR HANDLING
+========================= */
+bot.on("polling_error", (err) => console.log(err));
+
 console.log("🤖 Bot is running...");
