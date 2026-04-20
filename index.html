@@ -1208,7 +1208,7 @@ document.getElementById("fileInput").onchange=()=>{
 document.querySelector(".upload").innerText="✅ ተመርጧል";
 };
 
-window.send=async ()=>{
+window.send = async ()=>{
 
 let file=document.getElementById("fileInput").files[0];
 if(!file){
@@ -1222,8 +1222,7 @@ let refS=sRef(storage,"payments/"+name);
 await uploadBytes(refS,file);
 let url=await getDownloadURL(refS);
 
-await push(ref(db,"payments"),{amount,url});
-
+// save payment
 await push(ref(db,"payments"),{
   user_id: username,
   amount: amount,
@@ -1231,7 +1230,13 @@ await push(ref(db,"payments"),{
   status: "pending"
 });
 
-document.getElementById("balance").innerText=balance;
+// 🔥 UPDATE BALANCE (FIREBASE)
+let userRef = ref(db,"users/"+username+"/balance");
+
+let snap = await get(userRef);
+let current = snap.val() || 0;
+
+await set(userRef, current + amount);
 
 alert("✅ sent");
 closePay();
