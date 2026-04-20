@@ -1,0 +1,10 @@
+{
+  "name": "bingo-bot",
+  "version": "1.0.0",
+  "main": "bot/index.js",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.61.0",
+    "firebase-admin": "^11.10.1",
+    "dotenv": "^16.0.0"
+  }
+}
