@@ -387,7 +387,15 @@ databaseURL:"https://house-rent-app-3674a-default-rtdb.firebaseio.com/"
 
 const db = getDatabase(app)
 // ✅ username
-let username = localStorage.getItem("username");
+let tg = window.Telegram.WebApp;
+
+let username;
+
+if(tg.initDataUnsafe.user){
+  username = tg.initDataUnsafe.user.id;
+}else{
+  username = localStorage.getItem("username") || "guest_" + Math.random();
+}
 
 if(!username){
   username = prompt("Enter your name");
@@ -545,8 +553,12 @@ if(!userId){
 
 /* LOCAL DATA */
 let confirmedCards = [];
-let balance = Number(localStorage.getItem("balance") || 0);
+let balance = 0;
 
+onValue(ref(db,"users/"+username+"/balance"), snap=>{
+  balance = snap.val() || 0;
+  document.getElementById("balance").innerText = balance;
+});
 /* DOM */
 const selectScreen = document.getElementById("selectScreen");
 const homeScreen = document.getElementById("homeScreen");
@@ -1212,8 +1224,12 @@ let url=await getDownloadURL(refS);
 
 await push(ref(db,"payments"),{amount,url});
 
-balance+=amount;
-localStorage.setItem("balance",balance);
+await push(ref(db,"payments"),{
+  user_id: username,
+  amount: amount,
+  image: url,
+  status: "pending"
+});
 
 document.getElementById("balance").innerText=balance;
 
@@ -1322,4 +1338,4 @@ function stopAuto(){
 </script>
 
 </body>  
-</html>
+ </html>
