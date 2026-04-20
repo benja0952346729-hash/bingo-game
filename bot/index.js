@@ -3,19 +3,24 @@ require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const admin = require("firebase-admin");
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+// 🔥 Firebase JSON file (bot folder ውስጥ መኖር አለበት)
+const serviceAccount = require("./serviceAccount.json");
 
+// 🔥 Firebase init
 admin.initializeApp({
-  credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY)),
+  credential: admin.credential.cert(serviceAccount),
   databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com/"
 });
 
 const db = admin.database();
+
+// 🔥 Telegram bot
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
 const ADMIN = process.env.ADMIN_ID;
 
 /* START */
 bot.onText(/\/start/, (msg) => {
-
   bot.sendMessage(msg.chat.id, "🎁 Package ምረጥ", {
     reply_markup: {
       inline_keyboard: [
@@ -25,12 +30,10 @@ bot.onText(/\/start/, (msg) => {
       ]
     }
   });
-
 });
 
-/* PACKAGE */
+/* PACKAGE SELECT */
 bot.on("callback_query", async (q) => {
-
   let amount = q.data.split("_")[1];
   let user = q.from.id.toString();
 
@@ -51,12 +54,10 @@ bot.on("callback_query", async (q) => {
 
 📤 screenshot ላክ`
   );
-
 });
 
-/* PHOTO */
+/* RECEIVE PHOTO */
 bot.on("photo", async (msg) => {
-
   let user = msg.from.id.toString();
 
   let fileId = msg.photo[msg.photo.length - 1].file_id;
@@ -96,7 +97,6 @@ Reject:
 
 /* APPROVE */
 bot.onText(/\/approve (.+)/, async (msg, match) => {
-
   if(msg.from.id.toString() !== ADMIN) return;
 
   let id = match[1];
@@ -121,7 +121,6 @@ bot.onText(/\/approve (.+)/, async (msg, match) => {
 
 /* REJECT */
 bot.onText(/\/reject (.+)/, async (msg, match) => {
-
   if(msg.from.id.toString() !== ADMIN) return;
 
   let id = match[1];
@@ -129,5 +128,7 @@ bot.onText(/\/reject (.+)/, async (msg, match) => {
   await db.ref("payments/" + id).update({
     status: "rejected"
   });
-
 });
+
+/* TEST */
+console.log("🤖 Bot is running...");
