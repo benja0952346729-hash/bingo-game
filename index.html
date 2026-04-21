@@ -176,8 +176,8 @@ transform: translateX(-50%);
 background: #00e676;
 color: black;
 
-padding: 8px 18px;   /* 🔽 smaller /
-border-radius: 20px; / 🔽 smaller */
+padding: 8px 18px;   /* 🔽 smaller */
+border-radius: 20px; /* 🔽 smaller */
 
 font-size: 14px;     /* 🔽 text smaller */
 font-weight: bold;
@@ -401,8 +401,8 @@ top: 50%;
 left: 50%;
 transform: translate(-50%, -50%);
 
-background: white;      /* 🔥 ነጭ /
-color: black;           / 🔥 ጥቁር text */
+background: #ffffff;   /* white */
+color: #000000;        /* black text */
 
 padding: 20px 40px;
 border-radius: 30px;
@@ -418,7 +418,7 @@ text-align: center;
 display: none;
 z-index: 999999;
 
-box-shadow: 0 0 20px rgba(0,0,0,0.5); /* nice shadow */
+box-shadow: 0 0 20px rgba(0,0,0,0.5);
 }
 </style>  </head>  <body>
 
@@ -516,7 +516,7 @@ let tg = window.Telegram.WebApp;
 let username;
 
 if(tg.initDataUnsafe.user){
-username = "user_" + tg.initDataUnsafe.user.id; // ✅ FIXED
+username = String(tg.initDataUnsafe.user.id);
 }else{
 alert("Open inside Telegram!");
 }
@@ -749,39 +749,39 @@ document.getElementById("playerCount").innerText = uniquePlayers;
 /* GENERATE BOARD */
 function generateBoard(seed){
 
-  function seededRandom(seed){
-    let x = Math.sin(seed++) * 10000;
-    return x - Math.floor(x);
-  }
-
-  function getNums(min,max,seed){
-    let arr = [];
-    let s = seed;
-
-    while(arr.length < 5){
-      let n = Math.floor(seededRandom(s++)*(max-min+1))+min;
-      if(!arr.includes(n)) arr.push(n);
-    }
-    return arr;
-  }
-
-  let B = getNums(1,15,seed+1);
-  let I = getNums(16,30,seed+2);
-  let N = getNums(31,45,seed+3);
-  let G = getNums(46,60,seed+4);
-  let O = getNums(61,75,seed+5);
-
-  let board = [];
-
-  for(let i=0;i<5;i++){
-    board.push(B[i],I[i],N[i],G[i],O[i]);
-  }
-
-  board[12] = "FREE";
-
-  return board;
+function seededRandom(s){
+let x = Math.sin(s) * 10000;
+return x - Math.floor(x);
 }
 
+function getNums(min,max,seed){
+let arr = [];
+let s = seed;
+
+while(arr.length < 5){
+let n = Math.floor(seededRandom(s++)*(max-min+1))+min;
+if(!arr.includes(n)) arr.push(n);
+}
+return arr;
+}
+
+// ✅ USE seed correctly
+let B = getNums(1,15,seed+1);
+let I = getNums(16,30,seed+2);
+let N = getNums(31,45,seed+3);
+let G = getNums(46,60,seed+4);
+let O = getNums(61,75,seed+5);
+
+let board = [];
+
+for(let i=0;i<5;i++){
+board.push(B[i],I[i],N[i],G[i],O[i]);
+}
+
+board[12] = "FREE";
+
+return board;
+}
 // helper
 function getNums(min,max){
 let arr = [];
@@ -851,68 +851,72 @@ previewDiv.appendChild(c);
 /* CONFIRM */
 window.confirmCard = async ()=>{
 
+// ❗ card አልተመረጠም
 if(!selectedCard){
-  showMsg("👉 card ምረጥ");
-  return;
+showMsg("👉 card ምረጥ");
+return;
 }
 
+// ❗ game started check
 let statusSnap = await get(ref(db,"game/status"));
 let status = statusSnap.val();
 
 if(!status || !status.started){
-  showMsg("⛔ Game not started!");
-  return;
+showMsg("⛔ Game not started!");
+return;
 }
 
+// 🔥 bet
 let betSnap = await get(ref(db,"game/bet"));
 let bet = betSnap.val() || 0;
 
+// 🔥 user balance
 let userRef = ref(db,"users/"+username+"/balance");
+let balSnap = await get(userRef);
+let currentBalance = balSnap.val() || 0;
 
-let snapUser = await get(userRef);
-let currentBalance = snapUser.val() || 0;
-
+// ❌ balance check
 if(currentBalance < bet){
-  showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
-  return;
+showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
+return;
 }
 
+// 🔥 all cards
 let snapAll = await get(ref(db,"game/confirmedNumbers"));
 let data = snapAll.val() || {};
 
 let myCards = Object.values(data).filter(v => v === userId);
 
+// ❌ max 5
 if(myCards.length >= 5){
-  showMsg("❌ Max 5 cards!");
-  return;
+showMsg("❌ Max 5 cards!");
+return;
 }
 
+// ❌ already taken
 if(data[selectedCard]){
-  showMsg("❌ Already taken!");
-  return;
+showMsg("❌ Already taken!");
+return;
 }
 
-// ✅ deduct
+// ✅ deduct balance
 await set(userRef, currentBalance - bet);
-
-// ✅ total
 let totalRef = ref(db,"game/total");
+
 let totalSnap = await get(totalRef);
 let currentTotal = totalSnap.val() || 0;
 
 await set(totalRef, currentTotal + bet);
-
-// ✅ save
+// ✅ save card
 await set(ref(db,"game/confirmedNumbers/"+selectedCard), userId);
 
 showMsg("✅ Confirmed!");
 
-// ✅ RESET UI HERE (INSIDE FUNCTION)
-selectedCard = null;
-
+// UI reset (optional)
 document.querySelectorAll(".card").forEach(c=>{
 c.classList.remove("selected");
 });
+
 showPreview(boards[selectedCard]);
 };
 /* BUILD TV */
@@ -1041,22 +1045,32 @@ onValue(ref(db,"game/winners"), (snap)=>{
 let data = snap.val();
 if(!data) return;
 
+let winners = Object.values(data);
+
 let box = document.getElementById("winnerBox");
 let text = document.getElementById("winnerText");
 
+// 🔥 show UI
 box.style.display = "flex";
+
+// 🔄 clear old
 text.innerHTML = "";
 
-Object.values(data).forEach(w=>{
-  text.innerHTML += `
-  🏆 WINNER<br>
-  👤 ${w.user}<br>
-  🎟 Card: ${w.cardId}<br><br>
-  `;
+// 🔥 loop winners
+winners.forEach(w=>{
+
+text.innerHTML += `
+🏆 WINNER<br>
+👤 ${w.user}<br>
+🎟 Card: ${w.cardId}<br>
+🔢 ${w.numbers.join(", ")}<br><br>
+`;
+
 });
 
+// ⏱ auto hide after 5 sec
 setTimeout(()=>{
-  box.style.display = "none";
+box.style.display = "none";
 },5000);
 
 });
@@ -1533,4 +1547,4 @@ interval = null;
 
 </script>    
 </body>      
-</html>
+</html>  
