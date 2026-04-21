@@ -103,10 +103,13 @@ background:gold;
 color:black;  
 }  
   
-#cardsBox{  
-height:55%;  
-overflow-y:auto;  
-}  
+#cardsBox{
+  height: calc(55vh - 80px); /* 🔥 responsive height */
+  overflow-y: auto;
+
+  padding: 10px;
+  padding-bottom: 120px; /* 🔥 space for confirm button */
+}
   
 #cards{  
 display:grid;  
@@ -152,6 +155,25 @@ right:15px;
 background:red;  
 color:white;  
 }  
+#confirmBtn{
+  position: fixed;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+
+  background: #00e676;
+  color: black;
+
+  padding: 8px 18px;   /* 🔽 smaller */
+  border-radius: 20px; /* 🔽 smaller */
+
+  font-size: 14px;     /* 🔽 text smaller */
+  font-weight: bold;
+
+  z-index: 999999;
+
+  box-shadow: 0 0 10px #00e676; /* 🔽 softer */
+}
 #winnerBox{  
 position:fixed;  
 top:0;  
@@ -337,17 +359,66 @@ border-radius:20px;
   50%{box-shadow:0 0 20px #ff1744;}  
   100%{box-shadow:0 0 5px #ff1744;}  
 }  
-</style>  </head>  <body>  <div id="topBar">  
-<button class="miniBtn" onclick="startGame()">▶</button>  
-<button id="liveBtn" onclick="goLive()" style="display:none;">
-🔴 LIVE
-</button>
-<button class="cardsBtn" onclick="openMyCards()">🎮 MY CARDS</button>  
-<button onclick="resetGame()">🔄 Reset</button>  
-<button onclick="forceReset()">🔥 FIX</button>  
+#betLiveBox{
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.7);
+  color: #00e676;
+  font-weight: bold;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  z-index: 9999;
+}
+#msgBox{
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  background: white;      /* 🔥 ነጭ */
+  color: black;           /* 🔥 ጥቁር text */
+
+  padding: 20px 40px;
+  border-radius: 30px;
+
+  font-weight: bold;
+  font-size: 20px;
+
+  min-width: 250px;
+  max-width: 80%;
+
+  text-align: center;
+
+  display: none;
+  z-index: 999999;
+
+  box-shadow: 0 0 20px rgba(0,0,0,0.5); /* nice shadow */
+}
+</style>  </head>  <body> <div id="topBar">
+<div id="msgBox"></div>
+  <!-- ✅ LIVE BET BOX (ONLY ONE) -->
+  <div id="betLiveBox">
+    💸 <span id="betAmountTop">0</span> ብር
+  </div>
+
+  <button class="miniBtn" onclick="startGame()">▶</button>  
+
+  <button id="liveBtn" onclick="goLive()" style="display:none;">
+    🔴 LIVE
+  </button>
+
+  <button class="cardsBtn" onclick="openMyCards()">🎮 MY CARDS</button>  
+
+  <button onclick="resetGame()">🔄 Reset</button>  
+
+  <button onclick="forceReset()">🔥 FIX</button>  
+
+</div>
 </div>  <!-- SELECT SCREEN -->  <div id="selectScreen" class="screen active">  <div id="previewBox">  
 <h3>Preview <span id="count">(0/5)</span></h3>  
-<div id="preview"></div>  <button onclick="confirmCard()">✔ Confirm</button>
+<div id="preview"></div> <button id="confirmBtn" onclick="confirmCard()">✔ Confirm</button>
 
 <button id="accountBtn" onclick="openAccount()">👤 Account</button>
 
@@ -358,12 +429,16 @@ border-radius:20px;
 <div id="myBoards"></div>  
 <button class="back" onclick="goBack()">⬅ Back</button>  
 </div>  <!-- ACCOUNT -->  <div id="accountScreen" class="screen">  
+<div id="msgBox"></div>
 <h2 style="text-align:center;">My Account</h2>  <div class="balance">💰 <span id="balance">0</span> ብር</div>  
 <div id="msg" class="msg">👉 ብር ያስገቡ</div>  <div id="betGrid" class="grid"></div>  <button class="back" onclick="goBack()">⬅ Back</button>
 
 </div>  
 <!-- GAME SCREEN -->  
-<div id="gameScreen" class="screen">  <div id="tvBox">  
+<div id="gameScreen" class="screen"><div style="text-align:center; margin:5px;">
+💸 Bet: <span id="betAmountGame">0</span> ብር
+</div>
+<div id="tvBox">  
 <div id="tvGrid"></div>  
 </div>  <div id="gameCards"></div>  <button class="back" onclick="goBack()">⬅ Back</button>
 
@@ -385,7 +460,38 @@ apiKey:"AIzaSyCHXE0Q8nx1SYeQm1eptTf2xU_WXKG4lowM",
 databaseURL:"https://house-rent-app-3674a-default-rtdb.firebaseio.com/"
 });
 
-const db = getDatabase(app)
+const db = getDatabase(app);
+function showMsg(text){
+  let box = document.getElementById("msgBox");
+
+  box.innerText = text;
+
+  box.style.display = "block";
+  box.style.opacity = "1";
+
+  setTimeout(()=>{
+    box.style.display = "none";
+  },2000);
+}
+onValue(ref(db,"game/bet"), snap=>{
+  let bet = snap.val() || 0;
+
+  let topEl = document.getElementById("betAmountTop");
+let gameEl = document.getElementById("betAmountGame");
+
+if(topEl) topEl.innerText = bet;
+if(gameEl) gameEl.innerText = bet;
+
+  // 🔥 small animation (pulse)
+  let box = document.getElementById("betLiveBox");
+  if(box){
+    box.style.transform = "scale(1.1)";
+    setTimeout(()=>{
+      box.style.transform = "scale(1)";
+    },200);
+  }
+});
+
 // ✅ username
 let tg = window.Telegram.WebApp;
 
@@ -716,42 +822,59 @@ previewDiv.appendChild(c);
 
 window.confirmCard = async ()=>{
 
+  // ❗ card አልተመረጠም
   if(!selectedCard){
-    alert("👉 card ምረጥ");
+    showMsg("👉 card ምረጥ");
     return;
   }
 
+  // 🔥 bet አንብብ
+  let betSnap = await get(ref(db,"game/bet"));
+  let bet = betSnap.val() || 0;
+
+  // 🔥 balance አንብብ (LIVE)
+  let userRef = ref(db,"users/"+username+"/balance");
+  let balSnap = await get(userRef);
+  let currentBalance = balSnap.val() || 0;
+
+  // ❌ balance ካነሰ
+  if(currentBalance < bet){
+    showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
+    return;
+  }
+
+  // 🔥 all cards
   let snapAll = await get(ref(db,"game/confirmedNumbers"));
   let data = snapAll.val() || {};
 
   let myCards = Object.values(data).filter(v => v === userId);
 
+  // ❌ max 5
   if(myCards.length >= 5){
-    alert("❌ Max 5 cards!");
+    showMsg("❌ Max 5 cards!");
     return;
   }
 
+  // ❌ already taken
   if(data[selectedCard]){
-    alert("❌ Already taken!");
+    showMsg("❌ Already taken!");
     return;
   }
 
+  // ✅ deduct balance
+  await set(userRef, currentBalance - bet);
+
+  // ✅ save card
   await set(ref(db,"game/confirmedNumbers/"+selectedCard), userId);
 
-  alert("✅ Confirmed!");
+  showMsg("✅ Confirmed!");
 
-
-  // UI reset
+  // UI reset (optional)
   document.querySelectorAll(".card").forEach(c=>{
     c.classList.remove("selected");
   });
 
-  // ❌ DON'T CLEAR
-// previewDiv.innerHTML = "";
-// selectedCard = null;
-
-// ✅ KEEP SELECTED CARD
-showPreview(boards[selectedCard]);
+  showPreview(boards[selectedCard]);
 };
 /* BUILD TV */
 function buildTV(){
@@ -1236,11 +1359,7 @@ let userRef = ref(db,"users/"+username+"/balance");
 let snap = await get(userRef);
 let current = snap.val() || 0;
 
-await set(userRef, current + amount);
-
-alert("✅ sent");
-closePay();
-};
+}
 
 onValue(ref(db,"game/reset"), snap=>{
 
