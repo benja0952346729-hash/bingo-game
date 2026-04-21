@@ -1,539 +1,524 @@
-<!DOCTYPE html>  <html>  
- <script src="https://telegram.org/js/telegram-web-app.js"></script>  
-<head>  
-<title>Bingo Fixed Pro</title>  <style>  
-#tvInfoBox{
-  position: fixed;
-  top: 10px;
-  left: 10px;
-
-  background: rgba(0,0,0,0.7);
-  color: #00e676;
-
-  font-weight: bold;
-  font-size: 14px;
-
-  padding: 6px 12px;
-  border-radius: 20px;
-
-  z-index: 9999;
-  display: flex;
-  gap: 10px;
-}
-@keyframes pop{  
-  0%{transform:scale(1);}  
-  50%{transform:scale(1.2);}  
-  100%{transform:scale(1);}  
-}  
-  
-.confirmAnim{  
-  animation: pop 0.4s ease;  
-  background:#00e676 !important;  
-  color:black !important;  
-}  
-body{  
-margin:0;  
-font-family:Arial;  
-background:#111;  
-color:white;  
-}  
-#accountBtn{  
+<!DOCTYPE html>  <html>     <script src="https://telegram.org/js/telegram-web-app.js"></script>    <head>    
+<title>Bingo Fixed Pro</title>  <style>    
+#tvInfoBox{  
   position: fixed;  
-  right: 15px;  
-  
-  top: 48%;   /* 👈 ይህ ነው ቁልፉ */  
-  transform: translateY(-50%);  
-  
-  background: #00c853;  
-  color: white;  
-  font-weight: bold;  
-  
-  border-radius: 20px;  
-  padding: 10px 14px;  
-  
-  z-index: 1000;  
-}  
-#accountBtn{  
-  animation: pulseAcc 1.5s infinite;  
-}  
-  
-@keyframes pulseAcc{  
-  0%{box-shadow:0 0 5px #00c853;}  
-  50%{box-shadow:0 0 20px #00c853;}  
-  100%{box-shadow:0 0 5px #00c853;}  
-}  
-#topBar{  
-display:flex;  
-padding:10px;  
-background:#000;  
-}  
-  
-button{  
-padding:10px;  
-border:none;  
-border-radius:8px;  
-}  
-  
-.miniBtn{  
-background:orange;  
-color:black;  
-}  
-  
-.cardsBtn{  
-margin-left:auto;  
-background:orange;  
-color:black;  
-}  
-  
-.screen{  
-display:none;  
-height:100vh;  
-flex-direction:column;  
-}  
-  
-.active{  
-display:flex;  
-}  
-  
-#previewBox{
-  height:45%;
-display:flex;  
-flex-direction:column;  
-align-items:center;  
-border-bottom:2px solid #333;  
-}  
-  
-.board{  
-display:grid;  
-grid-template-columns:repeat(5,55px);  
-gap:5px;  
-}  
-  
-.cell{  
-background:#333;  
-padding:8px;  
-text-align:center;  
-border-radius:6px;  
-}  
-  
-.free{  
-background:gold;  
-color:black;  
-}  
-  
-#cardsBox{
-  height: calc(47vh - 73px); /* 🔥 responsive height */
-  overflow-y: auto;
+  top: 10px;  
+  left: 10px;  background: rgba(0,0,0,0.7);
+color: #00e676;
 
-  padding: 10px;
-  padding-bottom: 120px; /* 🔥 space for confirm button */
+font-weight: bold;
+font-size: 14px;
+
+padding: 6px 12px;
+border-radius: 20px;
+
+z-index: 9999;
+display: flex;
+gap: 10px;
 }
-  
-#cards{  
-display:grid;  
-grid-template-columns:repeat(5,55px);  
-gap:6px;  
-justify-content:center;  
-padding:10px;  
-}  
-  
-.card{  
-background:#333;  
-padding:10px;  
-text-align:center;  
-border-radius:8px;  
-cursor:pointer;  
-}  
-  
-.selected{  
-background:orange !important;  
-}  
-.smallBoard{  
-display:grid;  
-grid-template-columns:repeat(5,32px);  
-gap:4px;  
-background:#222;  
-padding:8px;  
-border-radius:10px;  
-margin:10px;  
-}  
-  
-.smallCell{  
-background:#333;  
-padding:5px;  
-font-size:11px;  
-text-align:center;  
-border-radius:4px;  
-}  
-  
-.back{  
-position:fixed;  
-bottom:15px;  
-right:15px;  
-background:red;  
-color:white;  
-}  
+@keyframes pop{
+0%{transform:scale(1);}
+50%{transform:scale(1.2);}
+100%{transform:scale(1);}
+}
+
+.confirmAnim{
+animation: pop 0.4s ease;
+background:#00e676 !important;
+color:black !important;
+}
+body{
+margin:0;
+font-family:Arial;
+background:#111;
+color:white;
+}
+#accountBtn{
+position: fixed;
+right: 15px;
+
+top: 48%;   /* 👈 ይህ ነው ቁልፉ */
+transform: translateY(-50%);
+
+background: #00c853;
+color: white;
+font-weight: bold;
+
+border-radius: 20px;
+padding: 10px 14px;
+
+z-index: 1000;
+}
+#accountBtn{
+animation: pulseAcc 1.5s infinite;
+}
+
+@keyframes pulseAcc{
+0%{box-shadow:0 0 5px #00c853;}
+50%{box-shadow:0 0 20px #00c853;}
+100%{box-shadow:0 0 5px #00c853;}
+}
+#topBar{
+display:flex;
+padding:10px;
+background:#000;
+}
+
+button{
+padding:10px;
+border:none;
+border-radius:8px;
+}
+
+.miniBtn{
+background:orange;
+color:black;
+}
+
+.cardsBtn{
+margin-left:auto;
+background:orange;
+color:black;
+}
+
+.screen{
+display:none;
+height:100vh;
+flex-direction:column;
+}
+
+.active{
+display:flex;
+}
+
+#previewBox{
+height:45%;
+display:flex;
+flex-direction:column;
+align-items:center;
+border-bottom:2px solid #333;
+}
+
+.board{
+display:grid;
+grid-template-columns:repeat(5,55px);
+gap:5px;
+}
+
+.cell{
+background:#333;
+padding:8px;
+text-align:center;
+border-radius:6px;
+}
+
+.free{
+background:gold;
+color:black;
+}
+
+#cardsBox{
+height: calc(47vh - 73px); /* 🔥 responsive height */
+overflow-y: auto;
+
+padding: 10px;
+padding-bottom: 120px; /* 🔥 space for confirm button */
+}
+
+#cards{
+display:grid;
+grid-template-columns:repeat(5,55px);
+gap:6px;
+justify-content:center;
+padding:10px;
+}
+
+.card{
+background:#333;
+padding:10px;
+text-align:center;
+border-radius:8px;
+cursor:pointer;
+}
+
+.selected{
+background:orange !important;
+}
+.smallBoard{
+display:grid;
+grid-template-columns:repeat(5,32px);
+gap:4px;
+background:#222;
+padding:8px;
+border-radius:10px;
+margin:10px;
+}
+
+.smallCell{
+background:#333;
+padding:5px;
+font-size:11px;
+text-align:center;
+border-radius:4px;
+}
+
+.back{
+position:fixed;
+bottom:15px;
+right:15px;
+background:red;
+color:white;
+}
 
 #confirmBtn{
-  position: fixed;
-  bottom: 15px;
-  left: 50%;
-  transform: translateX(-50%);
+position: fixed;
+bottom: 15px;
+left: 50%;
+transform: translateX(-50%);
 
-  background: #00e676;
-  color: black;
+background: #00e676;
+color: black;
 
-  padding: 8px 18px;   /* 🔽 smaller */
-  border-radius: 20px; /* 🔽 smaller */
+padding: 8px 18px;   /* 🔽 smaller /
+border-radius: 20px; / 🔽 smaller */
 
-  font-size: 14px;     /* 🔽 text smaller */
-  font-weight: bold;
+font-size: 14px;     /* 🔽 text smaller */
+font-weight: bold;
 
-  z-index: 999999;
+z-index: 999999;
 
-  box-shadow: 0 0 10px #00e676; /* 🔽 softer */
+box-shadow: 0 0 10px #00e676; /* 🔽 softer */
 }
 #winnerBox{
-  position:fixed;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  background:rgba(0,0,0,0.95);
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.95);
 
-  display:none;
-  justify-content:center;
-  align-items:center;
-  flex-direction:column;
+display:none;
+justify-content:center;
+align-items:center;
+flex-direction:column;
 
-  font-size:22px;
-  text-align:center;
+font-size:22px;
+text-align:center;
 
-  animation: popWin 0.4s ease;
+animation: popWin 0.4s ease;
 
-  z-index:999;
+z-index:999;
 }
 
 @keyframes popWin{
-  0%{transform:scale(0.7);}
-  100%{transform:scale(1);}
+0%{transform:scale(0.7);}
+100%{transform:scale(1);}
 }
-/* 🔲 TV BOX */  
-#tvBox{  
-  height:40vh;  
-  width:78%;  
-  
-  background:#000;  
-  padding:10px;  
-  border-radius:12px;  
-  
-  margin-left:10px;     /* 👉 LEFT */  
-  margin-top:10px;  
-  
-  border:2px solid #333;  
-  box-shadow:0 0 10px rgba(0,0,0,0.7);  
-}  
-  
-/* 🔢 GRID */  
-#tvGrid{  
-  display:grid;  
-  grid-template-columns:repeat(5,1fr);  
-  gap:4px;  
-  height:100%;  
-}  
-  
-/* 🔢 NORMAL CELLS */  
-.tvCell{  
-  background:#111;  
-  color:white;  
-  
-  font-size:14px;     /* 👈 smaller so 11–15 visible */  
-  font-weight:900;  
-  
-  padding:4px;  
-  border-radius:6px;  
-  
-  display:flex;  
-  justify-content:center;  
-  align-items:flex-start; /* 👈 up */  
-  
-  overflow:hidden;  
-}  
-  
-/* 🟡 BINGO HEADER */  
-.tvCell:nth-child(-n+5){  
-  background:gold;  
-  color:black;  
-  
-  font-size:15px;  
-  font-weight:900;  
-  
-  align-items:center;  
-}  
-  
-/* 🔴 CALLED NUMBER */  
-.called{  
-  background:#000 !important;  
-  color:#ff2d2d !important;  
-  
-  font-size:18px !important;  
-  font-weight:900;  
-  
-  border:2px solid red;  
-  
-  box-shadow:  
-    0 0 6px red,  
-    0 0 14px red;  
-  
-  transform:scale(1.1);  
-  animation:pulseRed 0.5s ease;  
-}  
-  
-/* 🔥 RED PULSE */  
-@keyframes pulseRed{  
-  0%{transform:scale(1);}  
-  50%{transform:scale(1.2);}  
-  100%{transform:scale(1);}  
-}  
-  
-/* ACCOUNT */  
-.balance{  
-text-align:center;  
-font-size:18px;  
-margin-top:10px;  
-}  
-  
-.msg{  
-text-align:center;  
-color:red;  
-margin:10px;  
-}  
-  
-.grid{  
-display:grid;  
-grid-template-columns:repeat(3,1fr);  
-gap:10px;  
-padding:15px;  
-}  
-  
-.bet{  
-background:#1f1f1f;  
-padding:14px;  
-border-radius:12px;  
-color:white;  
-}  
-  
-.modal{  
-position:fixed;  
-top:0;  
-left:0;  
-width:100%;  
-height:100%;  
-background:rgba(0,0,0,0.7);  
-display:none;  
-justify-content:center;  
-align-items:center;  
-}  
-  
-.popup{  
-background:#1e1e1e;  
-padding:20px;  
-border-radius:15px;  
-width:90%;  
-max-width:350px;  
-text-align:center;  
-}  
-  
-.upload{  
-border:2px dashed #555;  
-padding:30px;  
-border-radius:10px;  
-cursor:pointer;  
-margin-top:10px;  
-}  
-  
-input{  
-display:none;  
-}  
-  
-.btns{  
-display:flex;  
-gap:10px;  
-margin-top:15px;  
-}  
-  
-.send{  
-flex:1;  
-background:#00c853;  
-padding:10px;  
-border-radius:20px;  
-}  
-  
-.close{  
-flex:1;  
-background:#f44336;  
-padding:10px;  
-border-radius:20px;  
-}  
-#liveBtn{  
-  display:none;  
-  background:#ff1744;  
-  color:white;  
-  border-radius:20px;  
-  font-weight:bold;  
-  padding:8px 14px;  
-  animation:pulse 1s infinite;  
-}  
-  
-@keyframes pulse{  
-  0%{box-shadow:0 0 5px #ff1744;}  
-  50%{box-shadow:0 0 20px #ff1744;}  
-  100%{box-shadow:0 0 5px #ff1744;}  
-}  
+/* 🔲 TV BOX */
+#tvBox{
+height:40vh;
+width:78%;
+
+background:#000;
+padding:10px;
+border-radius:12px;
+
+margin-left:10px;     /* 👉 LEFT */
+margin-top:10px;
+
+border:2px solid #333;
+box-shadow:0 0 10px rgba(0,0,0,0.7);
+}
+
+/* 🔢 GRID */
+#tvGrid{
+display:grid;
+grid-template-columns:repeat(5,1fr);
+gap:4px;
+height:100%;
+}
+
+/* 🔢 NORMAL CELLS */
+.tvCell{
+background:#111;
+color:white;
+
+font-size:14px;     /* 👈 smaller so 11–15 visible */
+font-weight:900;
+
+padding:4px;
+border-radius:6px;
+
+display:flex;
+justify-content:center;
+align-items:flex-start; /* 👈 up */
+
+overflow:hidden;
+}
+
+/* 🟡 BINGO HEADER */
+.tvCell:nth-child(-n+5){
+background:gold;
+color:black;
+
+font-size:15px;
+font-weight:900;
+
+align-items:center;
+}
+
+/* 🔴 CALLED NUMBER */
+.called{
+background:#000 !important;
+color:#ff2d2d !important;
+
+font-size:18px !important;
+font-weight:900;
+
+border:2px solid red;
+
+box-shadow:
+0 0 6px red,
+0 0 14px red;
+
+transform:scale(1.1);
+animation:pulseRed 0.5s ease;
+}
+
+/* 🔥 RED PULSE */
+@keyframes pulseRed{
+0%{transform:scale(1);}
+50%{transform:scale(1.2);}
+100%{transform:scale(1);}
+}
+
+/* ACCOUNT */
+.balance{
+text-align:center;
+font-size:18px;
+margin-top:10px;
+}
+
+.msg{
+text-align:center;
+color:red;
+margin:10px;
+}
+
+.grid{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:10px;
+padding:15px;
+}
+
+.bet{
+background:#1f1f1f;
+padding:14px;
+border-radius:12px;
+color:white;
+}
+
+.modal{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.7);
+display:none;
+justify-content:center;
+align-items:center;
+}
+
+.popup{
+background:#1e1e1e;
+padding:20px;
+border-radius:15px;
+width:90%;
+max-width:350px;
+text-align:center;
+}
+
+.upload{
+border:2px dashed #555;
+padding:30px;
+border-radius:10px;
+cursor:pointer;
+margin-top:10px;
+}
+
+input{
+display:none;
+}
+
+.btns{
+display:flex;
+gap:10px;
+margin-top:15px;
+}
+
+.send{
+flex:1;
+background:#00c853;
+padding:10px;
+border-radius:20px;
+}
+
+.close{
+flex:1;
+background:#f44336;
+padding:10px;
+border-radius:20px;
+}
+#liveBtn{
+display:none;
+background:#ff1744;
+color:white;
+border-radius:20px;
+font-weight:bold;
+padding:8px 14px;
+animation:pulse 1s infinite;
+}
+
+@keyframes pulse{
+0%{box-shadow:0 0 5px #ff1744;}
+50%{box-shadow:0 0 20px #ff1744;}
+100%{box-shadow:0 0 5px #ff1744;}
+}
 #betLiveBox{
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  background: rgba(0,0,0,0.7);
-  color: #00e676;
-  font-weight: bold;
-  font-size: 14px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  z-index: 9999;
+position: fixed;
+top: 10px;
+right: 10px;
+background: rgba(0,0,0,0.7);
+color: #00e676;
+font-weight: bold;
+font-size: 14px;
+padding: 6px 12px;
+border-radius: 20px;
+z-index: 9999;
 }
 #msgBox{
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+position: fixed;
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
 
-  background: white;      /* 🔥 ነጭ */
-  color: black;           /* 🔥 ጥቁር text */
+background: white;      /* 🔥 ነጭ /
+color: black;           / 🔥 ጥቁር text */
 
-  padding: 20px 40px;
-  border-radius: 30px;
+padding: 20px 40px;
+border-radius: 30px;
 
-  font-weight: bold;
-  font-size: 20px;
+font-weight: bold;
+font-size: 20px;
 
-  min-width: 250px;
-  max-width: 80%;
+min-width: 250px;
+max-width: 80%;
 
-  text-align: center;
+text-align: center;
 
-  display: none;
-  z-index: 999999;
+display: none;
+z-index: 999999;
 
-  box-shadow: 0 0 20px rgba(0,0,0,0.5); /* nice shadow */
+box-shadow: 0 0 20px rgba(0,0,0,0.5); /* nice shadow */
 }
-</style>  </head>  <body> 
-<div id="topBar">
- <div id="tvInfoBox">
-  👥 <span id="playerCount">0</span> |
-  🎟 <span id="cardCount">0</span> |
-  💸 <span id="betAmountTop">0</span> |
-  🏆 <span id="prizeAmount">0</span>
-</div>
-<div id="msgBox"></div>
-  <!-- ✅ LIVE BET BOX (ONLY ONE) -->
-  <div id="betLiveBox">
-  </div>
+</style>  </head>  <body>
 
-  <button class="miniBtn" onclick="startGame()">▶</button>  
+<div id="topBar">  
+ <div id="tvInfoBox">  
+  👥 <span id="playerCount">0</span> |  
+  🎟 <span id="cardCount">0</span> |  
+  💸 <span id="betAmountTop">0</span> |  
+  🏆 <span id="prizeAmount">0</span>  
+</div>  
+<div id="msgBox"></div>  
+  <!-- ✅ LIVE BET BOX (ONLY ONE) -->  
+  <div id="betLiveBox">  
+  </div>  <button class="miniBtn" onclick="startGame()">▶</button>
 
-  <button id="liveBtn" onclick="goLive()" style="display:none;">
-    🔴 LIVE
-  </button>
+  <button id="liveBtn" onclick="goLive()" style="display:none;">  
+    🔴 LIVE  
+  </button>  <button class="cardsBtn" onclick="openMyCards()">🎮 MY CARDS</button>
 
-  <button class="cardsBtn" onclick="openMyCards()">🎮 MY CARDS</button>  
+<button onclick="resetGame()">🔄 Reset</button>
 
-  <button onclick="resetGame()">🔄 Reset</button>  
-
-  <button onclick="forceReset()">🔥 FIX</button>  
-
-</div>
-</div>  <!-- SELECT SCREEN -->  <div id="selectScreen" class="screen active">  <div id="previewBox">  
-<h3>Preview <span id="count">(0/5)</span></h3>  
-<div id="preview"></div> <button id="confirmBtn" onclick="confirmCard()">✔ Confirm</button>
-
-<button id="accountBtn" onclick="openAccount()">👤 Account</button>
-
-</div>  <div id="cardsBox">  
-<h2>Choose Card</h2>  
-<div id="cards"></div>  
-</div>  </div>  <!-- MY CARDS -->  <div id="homeScreen" class="screen">  
-<div id="myBoards"></div>  
-<button class="back" onclick="goBack()">⬅ Back</button>  
-</div>  <!-- ACCOUNT -->  <div id="accountScreen" class="screen">  
-<div id="msgBox"></div>
-<h2 style="text-align:center;">My Account</h2>  <div class="balance">💰 <span id="balance">0</span> ብር</div>  
-<div id="msg" class="msg">👉 ብር ያስገቡ</div>  <div id="betGrid" class="grid"></div>  <button class="back" onclick="goBack()">⬅ Back</button>
+<button onclick="forceReset()">🔥 FIX</button>
 
 </div>  
-<!-- GAME SCREEN -->  
-<div id="gameScreen" class="screen"><div style="text-align:center; margin:5px;">
-💸 Bet: <span id="betAmountGame">0</span> ብር
-</div>
-<div id="tvBox">  
-<div id="tvGrid"></div>  
-</div>  <div id="gameCards"></div>  <button class="back" onclick="goBack()">⬅ Back</button>
+</div>  <!-- SELECT SCREEN -->  <div id="selectScreen" class="screen active">  <div id="previewBox">    
+<h3>Preview <span id="count">(0/5)</span></h3>    
+<div id="preview"></div> <button id="confirmBtn" onclick="confirmCard()">✔ Confirm</button>  <button id="accountBtn" onclick="openAccount()">👤 Account</button>
 
-</div>  <!-- WINNER -->  <div id="winnerBox">  
-<h1 id="winnerText"></h1>  <div id="winnerBoard"></div>  </div>  <!-- PAYMENT MODAL -->  <div id="modal" class="modal">  <div class="popup">  <h3 id="amountText"></h3>  <label class="upload">  
-📤 ፎቶ ላክ  
-<input type="file" id="fileInput" accept="image/*">  
-</label>  <div class="btns">  
-<button class="send" onclick="send()">Send</button>  
-<button class="close" onclick="closePay()">Close</button>  
-</div>  </div>  
+</div>  <div id="cardsBox">    
+<h2>Choose Card</h2>    
+<div id="cards"></div>    
+</div>  </div>  <!-- MY CARDS -->  <div id="homeScreen" class="screen">    
+<div id="myBoards"></div>    
+<button class="back" onclick="goBack()">⬅ Back</button>    
+</div>  <!-- ACCOUNT -->  <div id="accountScreen" class="screen">    
+<div id="msgBox"></div>  
+<h2 style="text-align:center;">My Account</h2>  <div class="balance">💰 <span id="balance">0</span> ብር</div>    
+<div id="msg" class="msg">👉 ብር ያስገቡ</div>  <div id="betGrid" class="grid"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>    
+<!-- GAME SCREEN -->    
+<div id="gameScreen" class="screen"><div style="text-align:center; margin:5px;">  
+💸 Bet: <span id="betAmountGame">0</span> ብር  
 </div>  
-<script type="module">  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, get, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-const app = initializeApp({
-  apiKey: "AIzaSyCHXEQ8nx1SYeQm1eptTf2xU_WXKG4lowM",
-  authDomain: "house-rent-app-3674a.firebaseapp.com",
+<div id="tvBox">    
+<div id="tvGrid"></div>    
+</div>  <div id="gameCards"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>  <!-- WINNER -->  <div id="winnerBox">    
+<h1 id="winnerText"></h1>  <div id="winnerBoard"></div>  </div>  <!-- PAYMENT MODAL -->  <div id="modal" class="modal">  <div class="popup">  <h3 id="amountText"></h3>  <label class="upload">    
+📤 ፎቶ ላክ    
+<input type="file" id="fileInput" accept="image/*">    
+</label>  <div class="btns">    
+<button class="send" onclick="send()">Send</button>    
+<button class="close" onclick="closePay()">Close</button>    
+</div>  </div>    
+</div>    
+<script type="module">  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";  
+import { getDatabase, ref, set, onValue, get, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";  
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";  
+const app = initializeApp({  
+  apiKey: "AIzaSyCHXEQ8nx1SYeQm1eptTf2xU_WXKG4lowM",  
+  authDomain: "house-rent-app-3674a.firebaseapp.com",  databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com",
 
-  databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com",
-
-  projectId: "house-rent-app-3674a",
-  storageBucket: "house-rent-app-3674a.firebasestorage.app",
-  messagingSenderId: "732772696627",
-  appId: "1:732772696627:web:694a36c4729b57209ed946"
+projectId: "house-rent-app-3674a",
+storageBucket: "house-rent-app-3674a.firebasestorage.app",
+messagingSenderId: "732772696627",
+appId: "1:732772696627:web:694a36c4729b57209ed946"
 });
 
 const db = getDatabase(app);
 
 function showMsg(text){
-  let box = document.getElementById("msgBox");
+let box = document.getElementById("msgBox");
 
-  box.innerText = text;
+box.innerText = text;
 
-  box.style.display = "block";
-  box.style.opacity = "1";
+box.style.display = "block";
+box.style.opacity = "1";
 
-  setTimeout(()=>{
-    box.style.display = "none";
-  },2000);
+setTimeout(()=>{
+box.style.display = "none";
+},2000);
 }
 onValue(ref(db,"game/bet"), snap=>{
-  let bet = snap.val() || 0;
+let bet = snap.val() || 0;
 
-  let topEl = document.getElementById("betAmountTop");
+let topEl = document.getElementById("betAmountTop");
 let gameEl = document.getElementById("betAmountGame");
 
 if(topEl) topEl.innerText = bet;
 if(gameEl) gameEl.innerText = bet;
 
-  // 🔥 small animation (pulse)
-  let box = document.getElementById("betLiveBox");
-  if(box){
-    box.style.transform = "scale(1.1)";
-    setTimeout(()=>{
-      box.style.transform = "scale(1)";
-    },200);
-  }
+// 🔥 small animation (pulse)
+let box = document.getElementById("betLiveBox");
+if(box){
+box.style.transform = "scale(1.1)";
+setTimeout(()=>{
+box.style.transform = "scale(1)";
+},200);
+}
 });
 
 // ✅ username
@@ -542,144 +527,143 @@ let tg = window.Telegram.WebApp;
 let username;
 
 if(tg.initDataUnsafe.user){
-  username = String(tg.initDataUnsafe.user.id);
+  username = "user_" + tg.initDataUnsafe.user.id; // ✅ FIXED
 }else{
   alert("Open inside Telegram!");
 }
 
 if(!username){
-  username = prompt("Enter your name");
-  localStorage.setItem("username", username);
+username = prompt("Enter your name");
+localStorage.setItem("username", username);
 }
-
 
 // 🔥 FORCE CHECK ON LOAD
 window.addEventListener("load", async ()=>{
 
-  let snap = await get(ref(db,"game/status"));
-  let data = snap.val();
+let snap = await get(ref(db,"game/status"));
+let data = snap.val();
 
-  if(data && data.started){
+if(data && data.started){
 
-    gameStarted = true;
+gameStarted = true;  
 
-    selectScreen.classList.remove("active");
-    homeScreen.classList.remove("active");
-    accountScreen.classList.remove("active");
-    document.getElementById("gameScreen").classList.add("active");
+selectScreen.classList.remove("active");  
+homeScreen.classList.remove("active");  
+accountScreen.classList.remove("active");  
+document.getElementById("gameScreen").classList.add("active");  
 
-    buildTV();
-    await showGameCards();
+buildTV();  
+await showGameCards();  
 
-    let snapNums = await get(ref(db,"game/calledNumbers"));
-    let nums = Object.values(snapNums.val() || {});
-    calledNumbers = nums;
+let snapNums = await get(ref(db,"game/calledNumbers"));  
+let nums = Object.values(snapNums.val() || {});  
+calledNumbers = nums;  
 
-    nums.forEach(n=>{
-      let el = document.getElementById("num"+n);
-      if(el) el.classList.add("called");
-    });
+nums.forEach(n=>{  
+  let el = document.getElementById("num"+n);  
+  if(el) el.classList.add("called");  
+});  
 
-    updateCards();
+updateCards();
 
 // 👉 ADD HERE 👇
 (async ()=>{
-  let snapAll = await get(ref(db,"game/confirmedNumbers"));
-  let dataAll = snapAll.val() || {};
+let snapAll = await get(ref(db,"game/confirmedNumbers"));
+let dataAll = snapAll.val() || {};
 
-  let winners = checkAllWinners(dataAll);
+let winners = checkAllWinners(dataAll);
 
-  if(winners.length > 0){
-    await set(ref(db,"game/winners"), winners);
-  }
+if(winners.length > 0){
+await set(ref(db,"game/winners"), winners);
+}
 })();
-  }
+}
 
 });
 onValue(ref(db,"game/status"), async (snap)=>{
 
-  let data = snap.val();
+let data = snap.val();
 
-  console.log("STATUS:", data); // 👈 DEBUG
+console.log("STATUS:", data); // 👈 DEBUG
 
-  let liveBtn = document.getElementById("liveBtn");
+let liveBtn = document.getElementById("liveBtn");
 
-  if(!data){
-    return;
-  }
+if(!data){
+return;
+}
 
-  // 🔴 LIVE BUTTON
-  if(data.started){
-    if(liveBtn) liveBtn.style.display = "inline-block";
-  }else{
-    if(liveBtn) liveBtn.style.display = "none";
-  }
+// 🔴 LIVE BUTTON
+if(data.started){
+if(liveBtn) liveBtn.style.display = "inline-block";
+}else{
+if(liveBtn) liveBtn.style.display = "none";
+}
 
-  // ✅ GAME START
-  if(data.started){
+// ✅ GAME START
+if(data.started){
 
-    console.log("GAME STARTED 🔥");
+console.log("GAME STARTED 🔥");  
 
-    gameStarted = true;
+gameStarted = true;  
 
-    // 👉 FORCE ENTER GAME
-    selectScreen.classList.remove("active");
-    homeScreen.classList.remove("active");
-    accountScreen.classList.remove("active");
-    document.getElementById("gameScreen").classList.add("active");
+// 👉 FORCE ENTER GAME  
+selectScreen.classList.remove("active");  
+homeScreen.classList.remove("active");  
+accountScreen.classList.remove("active");  
+document.getElementById("gameScreen").classList.add("active");  
 
-    // 🔄 rebuild UI
-    tvGrid.innerHTML = "";
-    document.getElementById("gameCards").innerHTML = "";
+// 🔄 rebuild UI  
+tvGrid.innerHTML = "";  
+document.getElementById("gameCards").innerHTML = "";  
 
-    buildTV();
-    await showGameCards();
+buildTV();  
+await showGameCards();  
 
-    // 🔢 load numbers
-    let snapNums = await get(ref(db,"game/calledNumbers"));
-    let nums = Object.values(snapNums.val() || {});
-    calledNumbers = nums;
+// 🔢 load numbers  
+let snapNums = await get(ref(db,"game/calledNumbers"));  
+let nums = Object.values(snapNums.val() || {});  
+calledNumbers = nums;  
 
-    nums.forEach(n=>{
-      let el = document.getElementById("num"+n);
-      if(el) el.classList.add("called");
-    });
+nums.forEach(n=>{  
+  let el = document.getElementById("num"+n);  
+  if(el) el.classList.add("called");  
+});  
 
-    updateCards();
+updateCards();
 
-  }else{
+}else{
 
-    console.log("GAME STOPPED ⛔");
+console.log("GAME STOPPED ⛔");  
 
-    gameStarted = false;
+gameStarted = false;  
 
-    clearInterval(interval);
-    interval = null;
+clearInterval(interval);  
+interval = null;  
 
-    document.getElementById("gameScreen").classList.remove("active");
-    homeScreen.classList.remove("active");
-    accountScreen.classList.remove("active");
-    selectScreen.classList.add("active");
+document.getElementById("gameScreen").classList.remove("active");  
+homeScreen.classList.remove("active");  
+accountScreen.classList.remove("active");  
+selectScreen.classList.add("active");  
 
-    tvGrid.innerHTML="";
-    document.getElementById("gameCards").innerHTML="";
-    previewDiv.innerHTML="";
+tvGrid.innerHTML="";  
+document.getElementById("gameCards").innerHTML="";  
+previewDiv.innerHTML="";  
 
-    confirmedCards = [];
-    calledNumbers = [];
+confirmedCards = [];  
+calledNumbers = [];  
 
-    document.querySelectorAll(".card").forEach(card=>{
-      card.classList.remove("selected");
-      card.style.background="#333";
-      card.style.color="white";
-    });
+document.querySelectorAll(".card").forEach(card=>{  
+  card.classList.remove("selected");  
+  card.style.background="#333";  
+  card.style.color="white";  
+});  
 
-    countSpan.innerText="(0/5)";
-  }
+countSpan.innerText="(0/5)";
+
+}
 
 });
 const storage = getStorage(app);
-
 
 /* GAME STATE */
 const gameRef = ref(db,"game/status");
@@ -699,20 +683,15 @@ voiceReady = true;
 let audioUnlocked = false; // ✅ ADD THIS
 
 /* USER */
-let userId = localStorage.getItem("userId");
-
-if(!userId){
-  userId = "user_" + Math.random().toString(36).substr(2,9);
-  localStorage.setItem("userId", userId);
-}
+let userId = username;
 
 /* LOCAL DATA */
 let confirmedCards = [];
 let balance = 0;
 
 onValue(ref(db,"users/"+username+"/balance"), snap=>{
-  balance = snap.val() || 0;
-  document.getElementById("balance").innerText = balance;
+balance = snap.val() || 0;
+document.getElementById("balance").innerText = balance;
 });
 /* DOM */
 const selectScreen = document.getElementById("selectScreen");
@@ -729,91 +708,90 @@ countSpan.innerText = "(" + confirmedCards.length + "/5)";
 document.getElementById("balance").innerText = balance;
 onValue(ref(db,"game/confirmedNumbers"), snap=>{
 
-  let data = snap.val() || {};
+let data = snap.val() || {};
 
-  confirmedCards = [];
-  let myCount = 0;
+confirmedCards = [];
+let myCount = 0;
 
-  document.querySelectorAll(".card").forEach(card=>{
+document.querySelectorAll(".card").forEach(card=>{
 
-    let id = card.innerText;
+let id = card.innerText;  
 
-    if(data[id] === userId){
-      confirmedCards.push(Number(id));
-      myCount++;
+if(data[id] === userId){  
+  confirmedCards.push(Number(id));  
+  myCount++;  
 
-      card.style.background = "#00e676";
-      card.style.color = "black";
+  card.style.background = "#00e676";  
+  card.style.color = "black";  
 
-    }else if(data[id]){
+}else if(data[id]){  
 
-      card.style.background = "#ff1744";
-      card.style.color = "white";
+  card.style.background = "#ff1744";  
+  card.style.color = "white";  
 
-    }else{
+}else{  
 
-      card.style.background = "#333";
-      card.style.color = "white";
-    }
+  card.style.background = "#333";  
+  card.style.color = "white";  
+}
 
-  });
+});
 
-  // 🔥 ALWAYS UPDATE
-  countSpan.innerText = "(" + myCount + "/5)";
+// 🔥 ALWAYS UPDATE
+countSpan.innerText = "(" + myCount + "/5)";
 
 });
 onValue(ref(db,"game/prize"), snap=>{
-  let val = snap.val() || 0;
-  document.getElementById("prizeAmount").innerText = val;
+let val = snap.val() || 0;
+document.getElementById("prizeAmount").innerText = val;
 });
 onValue(ref(db,"game/confirmedNumbers"), snap=>{
 
-  let data = snap.val() || {};
+let data = snap.val() || {};
 
-  let cards = Object.keys(data).length;
-  let users = Object.values(data);
-  let uniquePlayers = [...new Set(users)].length;
+let cards = Object.keys(data).length;
+let users = Object.values(data);
+let uniquePlayers = [...new Set(users)].length;
 
-  document.getElementById("cardCount").innerText = cards;
-  document.getElementById("playerCount").innerText = uniquePlayers;
+document.getElementById("cardCount").innerText = cards;
+document.getElementById("playerCount").innerText = uniquePlayers;
 
 });
 /* GENERATE BOARD */
 function generateBoard(seed){
 
 function seededRandom(seed){
-  let x = Math.sin(seed++) * 10000;
-  return x - Math.floor(x);
+let x = Math.sin(seed++) * 10000;
+return x - Math.floor(x);
 }
 
 function getNums(min,max,seed){
-  let arr = [];
-  let s = seed;
+let arr = [];
+let s = seed;
 
-  while(arr.length < 5){
-    let n = Math.floor(seededRandom(s++)*(max-min+1))+min;
-    if(!arr.includes(n)) arr.push(n);
-  }
-  return arr;
+while(arr.length < 5){
+let n = Math.floor(seededRandom(s++)*(max-min+1))+min;
+if(!arr.includes(n)) arr.push(n);
+}
+return arr;
 }
 
-let B = getNums(1,15,seed*1);
-let I = getNums(16,30,seed*2);
-let N = getNums(31,45,seed*3);
-let G = getNums(46,60,seed*4);
+let B = getNums(1,15,seed1);
+let I = getNums(16,30,seed2);
+let N = getNums(31,45,seed3);
+let G = getNums(46,60,seed4);
 let O = getNums(61,75,seed*5);
 
 let board = [];
 
 for(let i=0;i<5;i++){
-  board.push(B[i],I[i],N[i],G[i],O[i]);
+board.push(B[i],I[i],N[i],G[i],O[i]);
 }
 
 board[12] = "FREE";
 
 return board;
 }
-
 
 // helper
 function getNums(min,max){
@@ -846,8 +824,6 @@ selectedCard=i;
 cardsDiv.appendChild(d);
 }
 
-
-
 /* PREVIEW */
 let selectedCard = null;
 
@@ -875,7 +851,7 @@ let c=document.createElement("div");
 c.className="cell";
 c.innerText=n;
 
-if(n==="FREE") c.classList.add("free");  
+if(n==="FREE") c.classList.add("free");
 
 previewDiv.appendChild(c);
 
@@ -884,67 +860,78 @@ previewDiv.appendChild(c);
 }
 
 /* CONFIRM */
-
 window.confirmCard = async ()=>{
 
-  // ❗ card አልተመረጠም
-  if(!selectedCard){
-    showMsg("👉 card ምረጥ");
-    return;
-  }
+// ❗ card አልተመረጠም
+if(!selectedCard){
+showMsg("👉 card ምረጥ");
+return;
+}
 
-  // 🔥 bet አንብብ
-  let betSnap = await get(ref(db,"game/bet"));
-  let bet = betSnap.val() || 0;
+// ❗ game started check
+let statusSnap = await get(ref(db,"game/status"));
+let status = statusSnap.val();
 
-  // 🔥 balance አንብብ (LIVE)
-  let userRef = ref(db,"users/"+username+"/balance");
-  let balSnap = await get(userRef);
-  let currentBalance = balSnap.val() || 0;
+if(!status || !status.started){
+showMsg("⛔ Game not started!");
+return;
+}
 
-  // ❌ balance ካነሰ
-  if(currentBalance < bet){
-    showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
-    return;
-  }
+// 🔥 bet
+let betSnap = await get(ref(db,"game/bet"));
+let bet = betSnap.val() || 0;
 
-  // 🔥 all cards
-  let snapAll = await get(ref(db,"game/confirmedNumbers"));
-  let data = snapAll.val() || {};
+// 🔥 user balance
+import { runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-  let myCards = Object.values(data).filter(v => v === userId);
+let userRef = ref(db,"users/"+username+"/balance");
 
-  // ❌ max 5
-  if(myCards.length >= 5){
-    showMsg("❌ Max 5 cards!");
-    return;
-  }
+await runTransaction(userRef, (current)=>{
+  return (current || 0) + amount;
+});
+// ❌ balance check
+if(currentBalance < bet){
+showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
+return;
+}
 
-  // ❌ already taken
-  if(data[selectedCard]){
-    showMsg("❌ Already taken!");
-    return;
-  }
+// 🔥 all cards
+let snapAll = await get(ref(db,"game/confirmedNumbers"));
+let data = snapAll.val() || {};
 
-  // ✅ deduct balance
-  await set(userRef, currentBalance - bet);
+let myCards = Object.values(data).filter(v => v === userId);
+
+// ❌ max 5
+if(myCards.length >= 5){
+showMsg("❌ Max 5 cards!");
+return;
+}
+
+// ❌ already taken
+if(data[selectedCard]){
+showMsg("❌ Already taken!");
+return;
+}
+
+// ✅ deduct balance
+await set(userRef, currentBalance - bet);
 let totalRef = ref(db,"game/total");
 
 let totalSnap = await get(totalRef);
 let currentTotal = totalSnap.val() || 0;
 
 await set(totalRef, currentTotal + bet);
-  // ✅ save card
-  await set(ref(db,"game/confirmedNumbers/"+selectedCard), userId);
+// ✅ save card
+await set(ref(db,"game/confirmedNumbers/"+selectedCard), userId);
 
-  showMsg("✅ Confirmed!");
+showMsg("✅ Confirmed!");
 
-  // UI reset (optional)
-  document.querySelectorAll(".card").forEach(c=>{
-    c.classList.remove("selected");
-  });
+// UI reset (optional)
+document.querySelectorAll(".card").forEach(c=>{
+c.classList.remove("selected");
+});
 
-  showPreview(boards[selectedCard]);
+showPreview(boards[selectedCard]);
 };
 /* BUILD TV */
 function buildTV(){
@@ -958,10 +945,10 @@ let d=document.createElement("div");
 d.className="tvCell";
 d.innerText=h;
 
-// 🟡 BINGO = yellow  
-d.style.background="gold";  
-d.style.color="black";  
-d.style.fontWeight="bold";  
+// 🟡 BINGO = yellow
+d.style.background="gold";
+d.style.color="black";
+d.style.fontWeight="bold";
 
 tvGrid.appendChild(d);
 
@@ -969,19 +956,19 @@ tvGrid.appendChild(d);
 
 for(let i=1;i<=15;i++){
 
-let nums=[i,i+15,i+30,i+45,i+60];  
+let nums=[i,i+15,i+30,i+45,i+60];
 
-nums.forEach(n=>{  
-  let d=document.createElement("div");  
-  d.className="tvCell";  
-  d.innerText=n;  
-  d.id="num"+n;  
+nums.forEach(n=>{
+let d=document.createElement("div");
+d.className="tvCell";
+d.innerText=n;
+d.id="num"+n;
 
-  // 🟠 numbers = orange  
-  d.style.background="black";  
-  d.style.color="white";  
+// 🟠 numbers = orange
+d.style.background="black";
+d.style.color="white";
 
-  tvGrid.appendChild(d);  
+tvGrid.appendChild(d);
 });
 
 }
@@ -1005,8 +992,6 @@ speechSynthesis.speak(speech);
 
 let winnerShown = false;
 let paid = false;
-
-
 
 /* CALLED NUMBERS */
 onValue(ref(db,"game/calledNumbers"),snap=>{
@@ -1032,38 +1017,37 @@ if(el) el.classList.add("called");
 });
 updateCards();
 
-
 // 🔥 AUTO TICK (FIXED)
 document.querySelectorAll(".smallCell").forEach(c=>{
 
-let text = c.innerText.trim();  
+let text = c.innerText.trim();
 
-// skip header  
-if(["B","I","N","G","O"].includes(text)) return;  
+// skip header
+if(["B","I","N","G","O"].includes(text)) return;
 
-// FREE  
-if(text === "F"){  
-  c.style.background = "gold";  
-  c.style.color = "black";  
-  return;  
-}  
+// FREE
+if(text === "F"){
+c.style.background = "gold";
+c.style.color = "black";
+return;
+}
 
-let val = Number(text);  
+let val = Number(text);
 
-if(!val) return; // safety  
+if(!val) return; // safety
 
-let wrap = c.closest("[data-mine]");  
-let isMine = wrap && wrap.dataset.mine === "yes";  
+let wrap = c.closest("[data-mine]");
+let isMine = wrap && wrap.dataset.mine === "yes";
 
-if(values.includes(val)){  
+if(values.includes(val)){
 
-  if(isMine){  
-    c.style.background = "#00e676"; // 🟢 yours  
-  }else{  
-    c.style.background = "#ff1744"; // 🔴 others  
-  }  
+if(isMine){
+c.style.background = "#00e676"; // 🟢 yours
+}else{
+c.style.background = "#ff1744"; // 🔴 others
+}
 
-  c.style.color="white";  
+c.style.color="white";
 }
 
 });
@@ -1072,31 +1056,26 @@ if(values.includes(val)){
 // 🏆 PLAYER WINNER LISTENER
 onValue(ref(db,"game/winners"), (snap)=>{
 
-  let data = snap.val();
-  if(!data) return;
+let data = snap.val();
+if(!data) return;
 
-  let winners = Object.values(data);
+let winners = Object.values(data);
 
-  let box = document.getElementById("winnerBox");
-  let text = document.getElementById("winnerText");
+let box = document.getElementById("winnerBox");
+let text = document.getElementById("winnerText");
 
-  // 🔥 show UI
-  box.style.display = "flex";
-  text.innerHTML = "";
+// 🔥 show UI
+box.style.display = "flex";
+text.innerHTML = "";
 
-  winners.forEach(w=>{
-    text.innerHTML += `
-      🏆 WINNER<br>
-      👤 ${w.user}<br>
-      🎟 Card: ${w.cardId}<br>
-      🔢 ${w.numbers.join(", ")}<br><br>
-    `;
-  });
+winners.forEach(w=>{
+text.innerHTML +=   🏆 WINNER<br>   👤 ${w.user}<br>   🎟 Card: ${w.cardId}<br>   🔢 ${w.numbers.join(", ")}<br><br>  ;
+});
 
-  // ⏱ show 5 sec
-  setTimeout(()=>{
-    box.style.display = "none";
-  },5000);
+// ⏱ show 5 sec
+setTimeout(()=>{
+box.style.display = "none";
+},5000);
 
 });
 let liveTotal = 0;
@@ -1104,28 +1083,28 @@ let livePercent = 80;
 
 // 🔥 total live
 onValue(ref(db,"game/total"), snap=>{
-  liveTotal = snap.val() || 0;
-  updatePrize();
+liveTotal = snap.val() || 0;
+updatePrize();
 });
 
 // 🔥 percent live
 onValue(ref(db,"game/percent"), snap=>{
-  livePercent = snap.val() || 80;
-  updatePrize();
+livePercent = snap.val() || 80;
+updatePrize();
 });
 
 // 🔥 calculate prize
 function updatePrize(){
 
-  let prize = liveTotal * (livePercent / 100);
+let prize = liveTotal * (livePercent / 100);
 
-  get(ref(db,"game/prize")).then(snap=>{
-    if((snap.val() || 0) !== prize){
-      set(ref(db,"game/prize"), prize);
-    }
-  });
+get(ref(db,"game/prize")).then(snap=>{
+if((snap.val() || 0) !== prize){
+set(ref(db,"game/prize"), prize);
+}
+});
 
-  document.getElementById("prizeAmount").innerText = prize;
+document.getElementById("prizeAmount").innerText = prize;
 }
 /* SHOW GAME CARDS */
 async function showGameCards(){
@@ -1212,9 +1191,6 @@ box.appendChild(wrap);
 
 }
 
-
-
-
 /* AUTO */
 document.getElementById("winnerBox").style.display="none";
 
@@ -1227,7 +1203,7 @@ let unlock = new Audio(
 );
 unlock.play().catch(()=>{});
 await set(ref(db,"game/total"), 0);
-  await set(ref(db,"game/prize"), 0);
+await set(ref(db,"game/prize"), 0);
 
 // ከዚህ በታች ያለው ኮድ አይቀየር
 await set(ref(db,"game/winners"), null);
@@ -1256,9 +1232,6 @@ clearInterval(interval);
 gameStarted=false;
 }
 
-
-
-
 /* NAVIGATION */
 window.openMyCards=()=>{
 
@@ -1276,31 +1249,31 @@ box.innerHTML="";
 
 confirmedCards.forEach(id=>{
 
-let wrap=document.createElement("div");  
+let wrap=document.createElement("div");
 
-let t=document.createElement("div");  
-t.innerText="Card "+id;  
-t.style.textAlign="center";  
-t.style.color="orange";  
+let t=document.createElement("div");
+t.innerText="Card "+id;
+t.style.textAlign="center";
+t.style.color="orange";
 
-let board=document.createElement("div");  
-board.className="smallBoard";  
+let board=document.createElement("div");
+board.className="smallBoard";
 
-boards[id].forEach(n=>{  
-  let c=document.createElement("div");  
-  c.className="smallCell";  
-  c.innerText=(n==="FREE")?"F":n;  
+boards[id].forEach(n=>{
+let c=document.createElement("div");
+c.className="smallCell";
+c.innerText=(n==="FREE")?"F":n;
 
-  if(n==="FREE"){  
-    c.style.background="gold";  
-    c.style.color="black";  
-  }  
+if(n==="FREE"){
+c.style.background="gold";
+c.style.color="black";
+}
 
-  board.appendChild(c);  
-});  
+board.appendChild(c);
+});
 
-wrap.appendChild(t);  
-wrap.appendChild(board);  
+wrap.appendChild(t);
+wrap.appendChild(board);
 box.appendChild(wrap);
 
 });
@@ -1310,16 +1283,16 @@ box.appendChild(wrap);
 /* ACCOUNT */
 window.openAccount=()=>{
 gameStarted = false;
-  // 🔥 hide all screens
-  selectScreen.classList.remove("active");
-  homeScreen.classList.remove("active");
-  document.getElementById("gameScreen").classList.remove("active");
+// 🔥 hide all screens
+selectScreen.classList.remove("active");
+homeScreen.classList.remove("active");
+document.getElementById("gameScreen").classList.remove("active");
 
-  // ✅ show account
-  accountScreen.classList.add("active");
+// ✅ show account
+accountScreen.classList.add("active");
 
-  // 🔥 update balance
-  document.getElementById("balance").innerText = balance;
+// 🔥 update balance
+document.getElementById("balance").innerText = balance;
 };
 
 /* BACK */
@@ -1335,15 +1308,15 @@ let liveBtn = document.getElementById("liveBtn");
 
 if(liveBtn){
 
-get(gameRef).then(snap=>{  
-  let data = snap.val();  
+get(gameRef).then(snap=>{
+let data = snap.val();
 
-  // ✔ SHOW ONLY IF GAME STARTED  
-  if(data && data.started){  
-    liveBtn.style.display = "inline-block";  
-  }else{  
-    liveBtn.style.display = "none";  
-  }  
+// ✔ SHOW ONLY IF GAME STARTED
+if(data && data.started){
+liveBtn.style.display = "inline-block";
+}else{
+liveBtn.style.display = "none";
+}
 });
 
 }
@@ -1351,59 +1324,59 @@ get(gameRef).then(snap=>{
 };
 window.goLive = async ()=>{
 
-  let liveBtn = document.getElementById("liveBtn");
+let liveBtn = document.getElementById("liveBtn");
 
-  // 🔥 RESET FIRST (VERY IMPORTANT)
-  tvGrid.innerHTML = "";
-  document.getElementById("gameCards").innerHTML = "";
+// 🔥 RESET FIRST (VERY IMPORTANT)
+tvGrid.innerHTML = "";
+document.getElementById("gameCards").innerHTML = "";
 
-  // screens
-  selectScreen.classList.remove("active");
-  homeScreen.classList.remove("active");
-  accountScreen.classList.remove("active");
-  document.getElementById("gameScreen").classList.add("active");
+// screens
+selectScreen.classList.remove("active");
+homeScreen.classList.remove("active");
+accountScreen.classList.remove("active");
+document.getElementById("gameScreen").classList.add("active");
 
-  if(liveBtn) liveBtn.style.display = "none";
+if(liveBtn) liveBtn.style.display = "none";
 
-  // rebuild
-  buildTV();
-  await showGameCards();
+// rebuild
+buildTV();
+await showGameCards();
 function restoreTicks(){
 
-  document.querySelectorAll(".smallCell").forEach(c=>{
+document.querySelectorAll(".smallCell").forEach(c=>{
 
-    let text = c.innerText.trim();
+let text = c.innerText.trim();  
 
-    // BINGO header skip
-    if(["B","I","N","G","O"].includes(text)) return;
+// BINGO header skip  
+if(["B","I","N","G","O"].includes(text)) return;  
 
-    // FREE
-    if(text === "F"){
-      c.style.background="gold";
-      c.style.color="black";
-      return;
-    }
+// FREE  
+if(text === "F"){  
+  c.style.background="gold";  
+  c.style.color="black";  
+  return;  
+}  
 
-    let val = Number(text);
+let val = Number(text);  
 
-    if(calledNumbers.includes(val)){
-      c.style.background = "#00e676";
-      c.style.color = "white";
-    }
+if(calledNumbers.includes(val)){  
+  c.style.background = "#00e676";  
+  c.style.color = "white";  
+}
 
-  });
+});
 
 }
-  // 🔥 reload called numbers fresh
-  let snap = await get(ref(db,"game/calledNumbers"));
-  let nums = Object.values(snap.val() || {});
+// 🔥 reload called numbers fresh
+let snap = await get(ref(db,"game/calledNumbers"));
+let nums = Object.values(snap.val() || {});
 
-  calledNumbers = nums;
+calledNumbers = nums;
 
-  nums.forEach(n=>{
-    let el = document.getElementById("num"+n);
-    if(el) el.classList.add("called");
-  });
+nums.forEach(n=>{
+let el = document.getElementById("num"+n);
+if(el) el.classList.add("called");
+});
 
 };
 /* PAYMENT */
@@ -1452,10 +1425,10 @@ let url=await getDownloadURL(refS);
 
 // save payment
 await push(ref(db,"payments"),{
-  user_id: username,
-  amount: amount,
-  image: url,
-  status: "pending"
+user_id: username,
+amount: amount,
+image: url,
+status: "pending"
 });
 
 let userRef = ref(db,"users/"+username+"/balance");
@@ -1463,119 +1436,119 @@ let userRef = ref(db,"users/"+username+"/balance");
 let snap = await get(userRef);
 let current = snap.val() || 0;
 
+// ✅ 🔥 FIX HERE
+await set(userRef, current + amount);
 
 showMsg("✅ ብር ተጨመረ!");
 closePay();
 
 }
-
 onValue(ref(db,"game/reset"), snap=>{
 
-  let t = snap.val();
-  if(!t) return;
+let t = snap.val();
+if(!t) return;
 
-  console.log("🔥 RESET RECEIVED");
+console.log("🔥 RESET RECEIVED");
 
-  confirmedCards = [];
-  calledNumbers = [];
+confirmedCards = [];
+calledNumbers = [];
 
-  previewDiv.innerHTML = "";
-  selectedCard = null;
+previewDiv.innerHTML = "";
+selectedCard = null;
 
-  document.querySelectorAll(".card").forEach(card=>{
-    card.classList.remove("selected");
-    card.style.background="#333";
-    card.style.color="white";
-  });
+document.querySelectorAll(".card").forEach(card=>{
+card.classList.remove("selected");
+card.style.background="#333";
+card.style.color="white";
+});
 
-  tvGrid.innerHTML="";
-  document.getElementById("gameCards").innerHTML="";
-  document.getElementById("winnerBox").style.display="none";
+tvGrid.innerHTML="";
+document.getElementById("gameCards").innerHTML="";
+document.getElementById("winnerBox").style.display="none";
 // 🔥 reset UI numbers
 document.getElementById("prizeAmount").innerText = 0;
 document.getElementById("playerCount").innerText = 0;
 document.getElementById("cardCount").innerText = 0;
-  countSpan.innerText="(0/5)";
+countSpan.innerText="(0/5)";
 
-  document.getElementById("gameScreen").classList.remove("active");
-  homeScreen.classList.remove("active");
-  accountScreen.classList.remove("active");
-  selectScreen.classList.add("active");
+document.getElementById("gameScreen").classList.remove("active");
+homeScreen.classList.remove("active");
+accountScreen.classList.remove("active");
+selectScreen.classList.add("active");
 
 });
 window.resetGame = async ()=>{
-  stopAuto();
+stopAuto();
 
-  await set(ref(db,"game/status"), {started:false});
-  await set(ref(db,"game/calledNumbers"), null);
+await set(ref(db,"game/status"), {started:false});
+await set(ref(db,"game/calledNumbers"), null);
 
-  // 🔥 IMPORTANT
-  await set(ref(db,"game/confirmedNumbers"), null);
-  await set(ref(db,"game/winners"), null);
-  await set(ref(db,"game/paid"), false);
-  await set(ref(db,"game/reset"), Date.now());
+// 🔥 IMPORTANT
 
-  document.getElementById("status").innerText="⏹ WAITING";
-  document.getElementById("grid").innerHTML="";
-  document.getElementById("winnerBox").innerText="";
-  await set(ref(db,"game/prize"), 0);
+await set(ref(db,"game/winners"), null);
+await set(ref(db,"game/paid"), false);
+await set(ref(db,"game/reset"), Date.now());
+
+document.getElementById("status").innerText="⏹ WAITING";
+document.getElementById("grid").innerHTML="";
+document.getElementById("winnerBox").innerText="";
+await set(ref(db,"game/prize"), 0);
 await set(ref(db,"game/total"), 0);
 await set(ref(db,"game/confirmedNumbers"), null);
 };
 function updateCards(){
 
-  document.querySelectorAll(".smallCell").forEach(c=>{
+document.querySelectorAll(".smallCell").forEach(c=>{
 
-    let text = c.innerText.trim();
+let text = c.innerText.trim();  
 
-    // BINGO header skip
-    if(["B","I","N","G","O"].includes(text)) return;
+// BINGO header skip  
+if(["B","I","N","G","O"].includes(text)) return;  
 
-    // FREE
-    if(text === "F"){
-      c.style.background="gold";
-      c.style.color="black";
-      return;
-    }
+// FREE  
+if(text === "F"){  
+  c.style.background="gold";  
+  c.style.color="black";  
+  return;  
+}  
 
-    let val = Number(text);
+let val = Number(text);  
 
-    if(calledNumbers.includes(val)){
+if(calledNumbers.includes(val)){  
 
-      let wrap = c.closest("[data-mine]");
-      let isMine = wrap && wrap.dataset.mine === "yes";
+  let wrap = c.closest("[data-mine]");  
+  let isMine = wrap && wrap.dataset.mine === "yes";  
 
-      if(isMine){
-        c.style.background = "#00e676"; // yours
-      }else{
-        c.style.background = "#ff1744"; // others
-      }
+  if(isMine){  
+    c.style.background = "#00e676"; // yours  
+  }else{  
+    c.style.background = "#ff1744"; // others  
+  }  
 
-      c.style.color="white";
-    }
+  c.style.color="white";  
+}
 
-  });
+});
 
 }
 window.forceReset = async ()=>{
 
-  await set(ref(db,"game/status"), {started:false});
-  await set(ref(db,"game/calledNumbers"), null);
-  await set(ref(db,"game/confirmedNumbers"), null);
-  await set(ref(db,"game/winners"), null);
+await set(ref(db,"game/status"), {started:false});
+await set(ref(db,"game/calledNumbers"), null);
+await set(ref(db,"game/confirmedNumbers"), null);
+await set(ref(db,"game/winners"), null);
 
-  await set(ref(db,"game/reset"), Date.now());
+await set(ref(db,"game/reset"), Date.now());
 
-  alert("🔥 Game Fixed / Reset!");
+alert("🔥 Game Fixed / Reset!");
 };
 function stopAuto(){
-  try{
-    clearInterval(interval);
-    interval = null;
-  }catch(e){}
+try{
+clearInterval(interval);
+interval = null;
+}catch(e){}
 }
 
-</script>
-
-</body>  
-</html>
+</script>  
+</body>    
+</html> 
