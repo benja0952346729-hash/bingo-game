@@ -857,15 +857,6 @@ showMsg("👉 card ምረጥ");
 return;
 }
 
-// ❗ game started check
-let statusSnap = await get(ref(db,"game/status"));
-let status = statusSnap.val();
-
-if(!status || !status.started){
-showMsg("⛔ Game not started!");
-return;
-}
-
 // 🔥 bet
 let betSnap = await get(ref(db,"game/bet"));
 let bet = betSnap.val() || 0;
@@ -1040,40 +1031,47 @@ c.style.color="white";
 
 });
 // 🏆 PLAYER WINNER LISTENER
-onValue(ref(db,"game/winners"), (snap)=>{
+onValue(ref(db,"game/winners"), async (snap)=>{
 
 let data = snap.val();
 if(!data) return;
 
 let winners = Object.values(data);
 
+// 🔍 check if YOU are winner
+let me = winners.find(w => w.user == username);
+
+if(me){
+
+// 🔥 get prize
+let prizeSnap = await get(ref(db,"game/prize"));
+let prize = prizeSnap.val() || 0;
+
+let share = prize / winners.length;
+
+// 🎉 SHOW MESSAGE
+showMsg("🎉 አሸናፊ ነህ! +" + share + " ብር");
+
+// 🏆 show UI (optional)
 let box = document.getElementById("winnerBox");
 let text = document.getElementById("winnerText");
 
-// 🔥 show UI
-box.style.display = "flex";
-
-// 🔄 clear old
-text.innerHTML = "";
-
-// 🔥 loop winners
-winners.forEach(w=>{
-
-text.innerHTML += `
-🏆 WINNER<br>
-👤 ${w.user}<br>
-🎟 Card: ${w.cardId}<br>
-🔢 ${w.numbers.join(", ")}<br><br>
+text.innerHTML = `
+🏆 YOU WIN<br>
+🎟 Card: ${me.cardId}<br>
+💰 +${share} ብር
 `;
 
-});
+box.style.display = "flex";
 
-// ⏱ auto hide after 5 sec
 setTimeout(()=>{
 box.style.display = "none";
 },5000);
 
+}
+
 });
+
 let liveTotal = 0;
 let livePercent = 80;
 
