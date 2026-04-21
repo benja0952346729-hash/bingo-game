@@ -2,6 +2,24 @@
  <script src="https://telegram.org/js/telegram-web-app.js"></script>  
 <head>  
 <title>Bingo Fixed Pro</title>  <style>  
+#tvInfoBox{
+  position: fixed;
+  top: 10px;
+  left: 10px;
+
+  background: rgba(0,0,0,0.7);
+  color: #00e676;
+
+  font-weight: bold;
+  font-size: 14px;
+
+  padding: 6px 12px;
+  border-radius: 20px;
+
+  z-index: 9999;
+  display: flex;
+  gap: 10px;
+}
 @keyframes pop{  
   0%{transform:scale(1);}  
   50%{transform:scale(1.2);}  
@@ -396,11 +414,17 @@ border-radius:20px;
 
   box-shadow: 0 0 20px rgba(0,0,0,0.5); /* nice shadow */
 }
-</style>  </head>  <body> <div id="topBar">
+</style>  </head>  <body> 
+<div id="topBar">
+ <div id="tvInfoBox">
+  👥 <span id="playerCount">0</span> |
+  🎟 <span id="cardCount">0</span> |
+  💸 <span id="betAmountTop">0</span> |
+  🏆 <span id="prizeAmount">0</span>
+</div>
 <div id="msgBox"></div>
   <!-- ✅ LIVE BET BOX (ONLY ONE) -->
   <div id="betLiveBox">
-    💸 <span id="betAmountTop">0</span> ብር
   </div>
 
   <button class="miniBtn" onclick="startGame()">▶</button>  
@@ -713,6 +737,22 @@ onValue(ref(db,"game/confirmedNumbers"), snap=>{
   countSpan.innerText = "(" + myCount + "/5)";
 
 });
+onValue(ref(db,"game/prize"), snap=>{
+  let val = snap.val() || 0;
+  document.getElementById("prizeAmount").innerText = val;
+});
+onValue(ref(db,"game/confirmedNumbers"), snap=>{
+
+  let data = snap.val() || {};
+
+  let cards = Object.keys(data).length;
+  let users = Object.values(data);
+  let uniquePlayers = [...new Set(users)].length;
+
+  document.getElementById("cardCount").innerText = cards;
+  document.getElementById("playerCount").innerText = uniquePlayers;
+
+});
 /* GENERATE BOARD */
 function generateBoard(seed){
 
@@ -863,7 +903,12 @@ window.confirmCard = async ()=>{
 
   // ✅ deduct balance
   await set(userRef, currentBalance - bet);
+let totalRef = ref(db,"game/total");
 
+let totalSnap = await get(totalRef);
+let currentTotal = totalSnap.val() || 0;
+
+await set(totalRef, currentTotal + bet);
   // ✅ save card
   await set(ref(db,"game/confirmedNumbers/"+selectedCard), userId);
 
@@ -1022,6 +1067,18 @@ if(values.includes(val)){
 }
 
 });
+
+});
+onValue(ref(db,"game/total"), async snap=>{
+
+  let total = snap.val() || 0;
+
+  let percentSnap = await get(ref(db,"game/percent"));
+  let percent = percentSnap.val() || 80;
+
+  let prize = total * (percent / 100);
+
+  await set(ref(db,"game/prize"), prize);
 
 });
 /* SHOW GAME CARDS */
@@ -1406,6 +1463,9 @@ window.resetGame = async ()=>{
   document.getElementById("status").innerText="⏹ WAITING";
   document.getElementById("grid").innerHTML="";
   document.getElementById("winnerBox").innerText="";
+  await set(ref(db,"game/prize"), 0);
+await set(ref(db,"game/total"), 0);
+await set(ref(db,"game/confirmedNumbers"), null);
 };
 function updateCards(){
 
@@ -1462,4 +1522,4 @@ function stopAuto(){
 </script>
 
 </body>  
- </html>
+</html>
