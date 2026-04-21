@@ -542,9 +542,9 @@ let tg = window.Telegram.WebApp;
 let username;
 
 if(tg.initDataUnsafe.user){
-  username = tg.initDataUnsafe.user.id;
+  username = String(tg.initDataUnsafe.user.id);
 }else{
-  username = localStorage.getItem("username") || "guest_" + Math.random();
+  alert("Open inside Telegram!");
 }
 
 if(!username){
@@ -1463,7 +1463,7 @@ let userRef = ref(db,"users/"+username+"/balance");
 let snap = await get(userRef);
 let current = snap.val() || 0;
 
-await set(userRef, current + amount);
+
 showMsg("✅ ብር ተጨመረ!");
 closePay();
 
@@ -1512,6 +1512,7 @@ window.resetGame = async ()=>{
   // 🔥 IMPORTANT
   await set(ref(db,"game/confirmedNumbers"), null);
   await set(ref(db,"game/winners"), null);
+  await set(ref(db,"game/paid"), false);
   await set(ref(db,"game/reset"), Date.now());
 
   document.getElementById("status").innerText="⏹ WAITING";
