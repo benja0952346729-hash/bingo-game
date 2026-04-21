@@ -479,10 +479,14 @@ border-radius:20px;
 <script type="module">  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, onValue, get, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
 const app = initializeApp({
-apiKey:"AIzaSyCHXE0Q8nx1SYeQm1eptTf2xU_WXKG4lowM",
-databaseURL:"https://house-rent-app-3674a-default-rtdb.firebaseio.com/"
+  apiKey: "AIzaSyABC123",
+  authDomain: "bingo-app.firebaseapp.com",
+  databaseURL: "https://bingo-app-default-rtdb.firebaseio.com",
+  projectId: "bingo-app",
+  storageBucket: "bingo-app.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123:web:abc"
 });
 
 const db = getDatabase(app);
@@ -569,6 +573,18 @@ window.addEventListener("load", async ()=>{
     });
 
     updateCards();
+
+// 👉 ADD HERE 👇
+(async ()=>{
+  let snapAll = await get(ref(db,"game/confirmedNumbers"));
+  let dataAll = snapAll.val() || {};
+
+  let winners = checkAllWinners(dataAll);
+
+  if(winners.length > 0){
+    await set(ref(db,"game/winners"), winners);
+  }
+})();
   }
 
 });
@@ -980,65 +996,65 @@ speechSynthesis.speak(speech);
 }
 
 let winnerShown = false;
+let paid = false;
 
 onValue(ref(db,"game/winners"), async snap=>{
 
   let data = snap.val();
   if(!data) return;
-// 🔥 GET PRIZE
-let prizeSnap = await get(ref(db,"game/prize"));
-let prize = prizeSnap.val() || 0;
 
-// 🔥 GIVE MONEY TO WINNERS
-for(let w of winners){
+  // 🔥 CHECK IF ALREADY PAID
+  let paidSnap = await get(ref(db,"game/paid"));
+  if(winners.length > 0){
 
-  let userRef = ref(db,"users/"+w.user+"/balance");
+  let paidSnap = await get(ref(db,"game/paid"));
 
-  let balSnap = await get(userRef);
-  let current = balSnap.val() || 0;
+  if(paidSnap.val() !== true){
+    await set(ref(db,"game/winners"), winners);
+  }
 
-  await set(userRef, current + prize);
 }
 
-  // 🛑 STOP GAME UI (BOTH)
-  try{ clearInterval(interval); }catch(e){}
-  try{ stopAuto && stopAuto(); }catch(e){}
+  let winners = Object.values(data);
 
-  // 🎯 SHOW WINNER
+  // 🔥 GET PRIZE
+  let prizeSnap = await get(ref(db,"game/prize"));
+  let totalPrize = prizeSnap.val() || 0;
+
+  // 🔥 SPLIT
+  let share = Math.floor(totalPrize / winners.length);
+
+  // 🔥 PAY
+  for(let w of winners){
+
+    let userRef = ref(db,"users/"+w.user+"/balance");
+
+    let balSnap = await get(userRef);
+    let current = balSnap.val() || 0;
+
+    await set(userRef, current + share);
+  }
+
+  // 🔥 MARK AS PAID
+  await set(ref(db,"game/paid"), true);
+
+  // 🏆 UI
   let box = document.getElementById("winnerBox");
-  let text = document.getElementById("winnerText") || document.getElementById("winnerBox");
+  let text = document.getElementById("winnerText");
 
   box.style.display = "flex";
-  text.innerHTML = "🏆 WINNER<br>";
-// 🔥 AUTO RESET AFTER WINNER
-setTimeout(async ()=>{
+  text.innerHTML = "🏆 WINNERS<br>";
 
-  // 🛑 stop game
-  await set(ref(db,"game/status"), {started:false});
-
-  // 🧹 clear game data
-  await set(ref(db,"game/calledNumbers"), null);
-  await set(ref(db,"game/confirmedNumbers"), null);
-  await set(ref(db,"game/winners"), null);
-
-  // 💰 reset money (BET stays)
-  await set(ref(db,"game/prize"), 0);
-  await set(ref(db,"game/total"), 0);
-
-  // 🔁 trigger UI reset
-  await set(ref(db,"game/reset"), Date.now());
-
-}, 5000);
   winners.forEach(w=>{
     text.innerHTML += `
       👤 ${w.user}<br>
-      🎟 Card ${w.cardId}<br><br>
+      🎟 Card ${w.cardId}<br>
+      💰 ${share} ብር<br><br>
     `;
   });
 
-
-
 });
+
 /* CALLED NUMBERS */
 onValue(ref(db,"game/calledNumbers"),snap=>{
 
@@ -1227,6 +1243,8 @@ let unlock = new Audio(
 "https://translate.google.com/translate_tts?ie=UTF-8&tl=en&q=Start&client=tw-ob"
 );
 unlock.play().catch(()=>{});
+await set(ref(db,"game/total"), 0);
+  await set(ref(db,"game/prize"), 0);
 
 // ከዚህ በታች ያለው ኮድ አይቀየር
 await set(ref(db,"game/winners"), null);
@@ -1457,11 +1475,14 @@ await push(ref(db,"payments"),{
   status: "pending"
 });
 
-// 🔥 UPDATE BALANCE (FIREBASE)
 let userRef = ref(db,"users/"+username+"/balance");
 
 let snap = await get(userRef);
 let current = snap.val() || 0;
+
+await set(userRef, current + amount);
+showMsg("✅ ብር ተጨመረ!");
+closePay();
 
 }
 
@@ -1568,6 +1589,54 @@ function stopAuto(){
     clearInterval(interval);
     interval = null;
   }catch(e){}
+}
+function checkAllWinners(data){
+
+  let winners = [];
+
+  Object.keys(data).forEach(cardId => {
+
+    let board = boards[cardId];
+    let called = calledNumbers;
+
+    function isWin(pattern){
+
+      return pattern.every(i => {
+        let val = board[i];
+        return val === "FREE" || called.includes(val);
+      });
+
+    }
+
+    let patterns = [
+      [0,1,2,3,4],
+      [5,6,7,8,9],
+      [10,11,12,13,14],
+      [15,16,17,18,19],
+      [20,21,22,23,24],
+
+      [0,5,10,15,20],
+      [1,6,11,16,21],
+      [2,7,12,17,22],
+      [3,8,13,18,23],
+      [4,9,14,19,24],
+
+      [0,6,12,18,24],
+      [4,8,12,16,20]
+    ];
+
+    let win = patterns.some(p => isWin(p));
+
+    if(win){
+      winners.push({
+        user: data[cardId],
+        cardId: cardId
+      });
+    }
+
+  });
+
+  return winners;
 }
 </script>
 
