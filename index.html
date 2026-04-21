@@ -1,12 +1,9 @@
-<!DOCTYPE html>  <html>     <script src="https://telegram.org/js/telegram-web-app.js"></script>    <head>    
-<title>Bingo Fixed Pro</title>  <style>    
-#tvInfoBox{  
-  position: fixed;  
-  top: 10px;  
-  left: 10px;  background: rgba(0,0,0,0.7);
-color: #00e676;
-
-font-weight: bold;
+<!DOCTYPE html>  <html>     <script src="https://telegram.org/js/telegram-web-app.js"></script>    <head>      <title>Bingo Fixed Pro</title>  <style>      
+#tvInfoBox{    
+  position: fixed;    
+  top: 10px;    
+  left: 10px;  background: rgba(0,0,0,0.7);  
+color: #00e676;  font-weight: bold;
 font-size: 14px;
 
 padding: 6px 12px;
@@ -425,64 +422,56 @@ box-shadow: 0 0 20px rgba(0,0,0,0.5); /* nice shadow */
 }
 </style>  </head>  <body>
 
-<div id="topBar">  
- <div id="tvInfoBox">  
-  👥 <span id="playerCount">0</span> |  
-  🎟 <span id="cardCount">0</span> |  
-  💸 <span id="betAmountTop">0</span> |  
-  🏆 <span id="prizeAmount">0</span>  
-</div>  
-<div id="msgBox"></div>  
-  <!-- ✅ LIVE BET BOX (ONLY ONE) -->  
-  <div id="betLiveBox">  
-  </div>  <button class="miniBtn" onclick="startGame()">▶</button>
-
-  <button id="liveBtn" onclick="goLive()" style="display:none;">  
-    🔴 LIVE  
-  </button>  <button class="cardsBtn" onclick="openMyCards()">🎮 MY CARDS</button>
-
-<button onclick="resetGame()">🔄 Reset</button>
+<div id="topBar">    
+ <div id="tvInfoBox">    
+  👥 <span id="playerCount">0</span> |    
+  🎟 <span id="cardCount">0</span> |    
+  💸 <span id="betAmountTop">0</span> |    
+  🏆 <span id="prizeAmount">0</span>    
+</div>    
+<div id="msgBox"></div>    
+  <!-- ✅ LIVE BET BOX (ONLY ONE) -->    
+  <div id="betLiveBox">    
+  </div>  <button class="miniBtn" onclick="startGame()">▶</button>    <button id="liveBtn" onclick="goLive()" style="display:none;">    
+    🔴 LIVE    
+  </button>  <button class="cardsBtn" onclick="openMyCards()">🎮 MY CARDS</button>  <button onclick="resetGame()">🔄 Reset</button>
 
 <button onclick="forceReset()">🔥 FIX</button>
 
-</div>  
-</div>  <!-- SELECT SCREEN -->  <div id="selectScreen" class="screen active">  <div id="previewBox">    
-<h3>Preview <span id="count">(0/5)</span></h3>    
-<div id="preview"></div> <button id="confirmBtn" onclick="confirmCard()">✔ Confirm</button>  <button id="accountBtn" onclick="openAccount()">👤 Account</button>
-
-</div>  <div id="cardsBox">    
-<h2>Choose Card</h2>    
-<div id="cards"></div>    
-</div>  </div>  <!-- MY CARDS -->  <div id="homeScreen" class="screen">    
-<div id="myBoards"></div>    
-<button class="back" onclick="goBack()">⬅ Back</button>    
-</div>  <!-- ACCOUNT -->  <div id="accountScreen" class="screen">    
-<div id="msgBox"></div>  
-<h2 style="text-align:center;">My Account</h2>  <div class="balance">💰 <span id="balance">0</span> ብር</div>    
-<div id="msg" class="msg">👉 ብር ያስገቡ</div>  <div id="betGrid" class="grid"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>    
-<!-- GAME SCREEN -->    
-<div id="gameScreen" class="screen"><div style="text-align:center; margin:5px;">  
-💸 Bet: <span id="betAmountGame">0</span> ብር  
-</div>  
-<div id="tvBox">    
-<div id="tvGrid"></div>    
-</div>  <div id="gameCards"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>  <!-- WINNER -->  <div id="winnerBox">    
-<h1 id="winnerText"></h1>  <div id="winnerBoard"></div>  </div>  <!-- PAYMENT MODAL -->  <div id="modal" class="modal">  <div class="popup">  <h3 id="amountText"></h3>  <label class="upload">    
-📤 ፎቶ ላክ    
-<input type="file" id="fileInput" accept="image/*">    
-</label>  <div class="btns">    
-<button class="send" onclick="send()">Send</button>    
-<button class="close" onclick="closePay()">Close</button>    
-</div>  </div>    
 </div>    
-<script type="module">  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";  
-import { getDatabase, ref, set, onValue, get, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";  
-import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";  
-const app = initializeApp({  
-  apiKey: "AIzaSyCHXEQ8nx1SYeQm1eptTf2xU_WXKG4lowM",  
-  authDomain: "house-rent-app-3674a.firebaseapp.com",  databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com",
-
-projectId: "house-rent-app-3674a",
+</div>  <!-- SELECT SCREEN -->  <div id="selectScreen" class="screen active">  <div id="previewBox">      
+<h3>Preview <span id="count">(0/5)</span></h3>      
+<div id="preview"></div> <button id="confirmBtn" onclick="confirmCard()">✔ Confirm</button>  <button id="accountBtn" onclick="openAccount()">👤 Account</button>  </div>  <div id="cardsBox">      
+<h2>Choose Card</h2>      
+<div id="cards"></div>      
+</div>  </div>  <!-- MY CARDS -->  <div id="homeScreen" class="screen">      
+<div id="myBoards"></div>      
+<button class="back" onclick="goBack()">⬅ Back</button>      
+</div>  <!-- ACCOUNT -->  <div id="accountScreen" class="screen">      
+<div id="msgBox"></div>    
+<h2 style="text-align:center;">My Account</h2>  <div class="balance">💰 <span id="balance">0</span> ብር</div>      
+<div id="msg" class="msg">👉 ብር ያስገቡ</div>  <div id="betGrid" class="grid"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>      
+<!-- GAME SCREEN -->      
+<div id="gameScreen" class="screen"><div style="text-align:center; margin:5px;">    
+💸 Bet: <span id="betAmountGame">0</span> ብር    
+</div>    
+<div id="tvBox">      
+<div id="tvGrid"></div>      
+</div>  <div id="gameCards"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>  <!-- WINNER -->  <div id="winnerBox">      
+<h1 id="winnerText"></h1>  <div id="winnerBoard"></div>  </div>  <!-- PAYMENT MODAL -->  <div id="modal" class="modal">  <div class="popup">  <h3 id="amountText"></h3>  <label class="upload">      
+📤 ፎቶ ላክ      
+<input type="file" id="fileInput" accept="image/*">      
+</label>  <div class="btns">      
+<button class="send" onclick="send()">Send</button>      
+<button class="close" onclick="closePay()">Close</button>      
+</div>  </div>      
+</div>      
+<script type="module">  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";    
+import { getDatabase, ref, set, onValue, get, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";    
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";    
+const app = initializeApp({    
+  apiKey: "AIzaSyCHXEQ8nx1SYeQm1eptTf2xU_WXKG4lowM",    
+  authDomain: "house-rent-app-3674a.firebaseapp.com",  databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com",  projectId: "house-rent-app-3674a",
 storageBucket: "house-rent-app-3674a.firebasestorage.app",
 messagingSenderId: "732772696627",
 appId: "1:732772696627:web:694a36c4729b57209ed946"
@@ -527,9 +516,9 @@ let tg = window.Telegram.WebApp;
 let username;
 
 if(tg.initDataUnsafe.user){
-  username = "user_" + tg.initDataUnsafe.user.id; // ✅ FIXED
+username = "user_" + tg.initDataUnsafe.user.id; // ✅ FIXED
 }else{
-  alert("Open inside Telegram!");
+alert("Open inside Telegram!");
 }
 
 if(!username){
@@ -545,24 +534,24 @@ let data = snap.val();
 
 if(data && data.started){
 
-gameStarted = true;  
+gameStarted = true;
 
-selectScreen.classList.remove("active");  
-homeScreen.classList.remove("active");  
-accountScreen.classList.remove("active");  
-document.getElementById("gameScreen").classList.add("active");  
+selectScreen.classList.remove("active");
+homeScreen.classList.remove("active");
+accountScreen.classList.remove("active");
+document.getElementById("gameScreen").classList.add("active");
 
-buildTV();  
-await showGameCards();  
+buildTV();
+await showGameCards();
 
-let snapNums = await get(ref(db,"game/calledNumbers"));  
-let nums = Object.values(snapNums.val() || {});  
-calledNumbers = nums;  
+let snapNums = await get(ref(db,"game/calledNumbers"));
+let nums = Object.values(snapNums.val() || {});
+calledNumbers = nums;
 
-nums.forEach(n=>{  
-  let el = document.getElementById("num"+n);  
-  if(el) el.classList.add("called");  
-});  
+nums.forEach(n=>{
+let el = document.getElementById("num"+n);
+if(el) el.classList.add("called");
+});
 
 updateCards();
 
@@ -602,61 +591,61 @@ if(liveBtn) liveBtn.style.display = "none";
 // ✅ GAME START
 if(data.started){
 
-console.log("GAME STARTED 🔥");  
+console.log("GAME STARTED 🔥");
 
-gameStarted = true;  
+gameStarted = true;
 
-// 👉 FORCE ENTER GAME  
-selectScreen.classList.remove("active");  
-homeScreen.classList.remove("active");  
-accountScreen.classList.remove("active");  
-document.getElementById("gameScreen").classList.add("active");  
+// 👉 FORCE ENTER GAME
+selectScreen.classList.remove("active");
+homeScreen.classList.remove("active");
+accountScreen.classList.remove("active");
+document.getElementById("gameScreen").classList.add("active");
 
-// 🔄 rebuild UI  
-tvGrid.innerHTML = "";  
-document.getElementById("gameCards").innerHTML = "";  
+// 🔄 rebuild UI
+tvGrid.innerHTML = "";
+document.getElementById("gameCards").innerHTML = "";
 
-buildTV();  
-await showGameCards();  
+buildTV();
+await showGameCards();
 
-// 🔢 load numbers  
-let snapNums = await get(ref(db,"game/calledNumbers"));  
-let nums = Object.values(snapNums.val() || {});  
-calledNumbers = nums;  
+// 🔢 load numbers
+let snapNums = await get(ref(db,"game/calledNumbers"));
+let nums = Object.values(snapNums.val() || {});
+calledNumbers = nums;
 
-nums.forEach(n=>{  
-  let el = document.getElementById("num"+n);  
-  if(el) el.classList.add("called");  
-});  
+nums.forEach(n=>{
+let el = document.getElementById("num"+n);
+if(el) el.classList.add("called");
+});
 
 updateCards();
 
 }else{
 
-console.log("GAME STOPPED ⛔");  
+console.log("GAME STOPPED ⛔");
 
-gameStarted = false;  
+gameStarted = false;
 
-clearInterval(interval);  
-interval = null;  
+clearInterval(interval);
+interval = null;
 
-document.getElementById("gameScreen").classList.remove("active");  
-homeScreen.classList.remove("active");  
-accountScreen.classList.remove("active");  
-selectScreen.classList.add("active");  
+document.getElementById("gameScreen").classList.remove("active");
+homeScreen.classList.remove("active");
+accountScreen.classList.remove("active");
+selectScreen.classList.add("active");
 
-tvGrid.innerHTML="";  
-document.getElementById("gameCards").innerHTML="";  
-previewDiv.innerHTML="";  
+tvGrid.innerHTML="";
+document.getElementById("gameCards").innerHTML="";
+previewDiv.innerHTML="";
 
-confirmedCards = [];  
-calledNumbers = [];  
+confirmedCards = [];
+calledNumbers = [];
 
-document.querySelectorAll(".card").forEach(card=>{  
-  card.classList.remove("selected");  
-  card.style.background="#333";  
-  card.style.color="white";  
-});  
+document.querySelectorAll(".card").forEach(card=>{
+card.classList.remove("selected");
+card.style.background="#333";
+card.style.color="white";
+});
 
 countSpan.innerText="(0/5)";
 
@@ -715,24 +704,24 @@ let myCount = 0;
 
 document.querySelectorAll(".card").forEach(card=>{
 
-let id = card.innerText;  
+let id = card.innerText;
 
-if(data[id] === userId){  
-  confirmedCards.push(Number(id));  
-  myCount++;  
+if(data[id] === userId){
+confirmedCards.push(Number(id));
+myCount++;
 
-  card.style.background = "#00e676";  
-  card.style.color = "black";  
+card.style.background = "#00e676";
+card.style.color = "black";
 
-}else if(data[id]){  
+}else if(data[id]){
 
-  card.style.background = "#ff1744";  
-  card.style.color = "white";  
+card.style.background = "#ff1744";
+card.style.color = "white";
 
-}else{  
+}else{
 
-  card.style.background = "#333";  
-  card.style.color = "white";  
+card.style.background = "#333";
+card.style.color = "white";
 }
 
 });
@@ -760,37 +749,37 @@ document.getElementById("playerCount").innerText = uniquePlayers;
 /* GENERATE BOARD */
 function generateBoard(seed){
 
-function seededRandom(seed){
-let x = Math.sin(seed++) * 10000;
-return x - Math.floor(x);
-}
+  function seededRandom(seed){
+    let x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+  }
 
-function getNums(min,max,seed){
-let arr = [];
-let s = seed;
+  function getNums(min,max,seed){
+    let arr = [];
+    let s = seed;
 
-while(arr.length < 5){
-let n = Math.floor(seededRandom(s++)*(max-min+1))+min;
-if(!arr.includes(n)) arr.push(n);
-}
-return arr;
-}
+    while(arr.length < 5){
+      let n = Math.floor(seededRandom(s++)*(max-min+1))+min;
+      if(!arr.includes(n)) arr.push(n);
+    }
+    return arr;
+  }
 
-let B = getNums(1,15,seed1);
-let I = getNums(16,30,seed2);
-let N = getNums(31,45,seed3);
-let G = getNums(46,60,seed4);
-let O = getNums(61,75,seed*5);
+  let B = getNums(1,15,seed+1);
+  let I = getNums(16,30,seed+2);
+  let N = getNums(31,45,seed+3);
+  let G = getNums(46,60,seed+4);
+  let O = getNums(61,75,seed+5);
 
-let board = [];
+  let board = [];
 
-for(let i=0;i<5;i++){
-board.push(B[i],I[i],N[i],G[i],O[i]);
-}
+  for(let i=0;i<5;i++){
+    board.push(B[i],I[i],N[i],G[i],O[i]);
+  }
 
-board[12] = "FREE";
+  board[12] = "FREE";
 
-return board;
+  return board;
 }
 
 // helper
@@ -862,75 +851,68 @@ previewDiv.appendChild(c);
 /* CONFIRM */
 window.confirmCard = async ()=>{
 
-// ❗ card አልተመረጠም
 if(!selectedCard){
-showMsg("👉 card ምረጥ");
-return;
+  showMsg("👉 card ምረጥ");
+  return;
 }
 
-// ❗ game started check
 let statusSnap = await get(ref(db,"game/status"));
 let status = statusSnap.val();
 
 if(!status || !status.started){
-showMsg("⛔ Game not started!");
-return;
+  showMsg("⛔ Game not started!");
+  return;
 }
 
-// 🔥 bet
 let betSnap = await get(ref(db,"game/bet"));
 let bet = betSnap.val() || 0;
 
-// 🔥 user balance
-import { runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
 let userRef = ref(db,"users/"+username+"/balance");
 
-await runTransaction(userRef, (current)=>{
-  return (current || 0) + amount;
-});
-// ❌ balance check
+let snapUser = await get(userRef);
+let currentBalance = snapUser.val() || 0;
+
 if(currentBalance < bet){
-showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
-return;
+  showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
+  return;
 }
 
-// 🔥 all cards
 let snapAll = await get(ref(db,"game/confirmedNumbers"));
 let data = snapAll.val() || {};
 
 let myCards = Object.values(data).filter(v => v === userId);
 
-// ❌ max 5
 if(myCards.length >= 5){
-showMsg("❌ Max 5 cards!");
-return;
+  showMsg("❌ Max 5 cards!");
+  return;
 }
 
-// ❌ already taken
 if(data[selectedCard]){
-showMsg("❌ Already taken!");
-return;
+  showMsg("❌ Already taken!");
+  return;
 }
 
-// ✅ deduct balance
+// ✅ deduct
 await set(userRef, currentBalance - bet);
-let totalRef = ref(db,"game/total");
 
+// ✅ total
+let totalRef = ref(db,"game/total");
 let totalSnap = await get(totalRef);
 let currentTotal = totalSnap.val() || 0;
 
 await set(totalRef, currentTotal + bet);
-// ✅ save card
+
+// ✅ save
 await set(ref(db,"game/confirmedNumbers/"+selectedCard), userId);
 
 showMsg("✅ Confirmed!");
 
-// UI reset (optional)
+// ✅ RESET UI HERE (INSIDE FUNCTION)
+selectedCard = null;
+
 document.querySelectorAll(".card").forEach(c=>{
 c.classList.remove("selected");
 });
-
 showPreview(boards[selectedCard]);
 };
 /* BUILD TV */
@@ -1059,22 +1041,22 @@ onValue(ref(db,"game/winners"), (snap)=>{
 let data = snap.val();
 if(!data) return;
 
-let winners = Object.values(data);
-
 let box = document.getElementById("winnerBox");
 let text = document.getElementById("winnerText");
 
-// 🔥 show UI
 box.style.display = "flex";
 text.innerHTML = "";
 
-winners.forEach(w=>{
-text.innerHTML +=   🏆 WINNER<br>   👤 ${w.user}<br>   🎟 Card: ${w.cardId}<br>   🔢 ${w.numbers.join(", ")}<br><br>  ;
+Object.values(data).forEach(w=>{
+  text.innerHTML += `
+  🏆 WINNER<br>
+  👤 ${w.user}<br>
+  🎟 Card: ${w.cardId}<br><br>
+  `;
 });
 
-// ⏱ show 5 sec
 setTimeout(()=>{
-box.style.display = "none";
+  box.style.display = "none";
 },5000);
 
 });
@@ -1345,23 +1327,23 @@ function restoreTicks(){
 
 document.querySelectorAll(".smallCell").forEach(c=>{
 
-let text = c.innerText.trim();  
+let text = c.innerText.trim();
 
-// BINGO header skip  
-if(["B","I","N","G","O"].includes(text)) return;  
+// BINGO header skip
+if(["B","I","N","G","O"].includes(text)) return;
 
-// FREE  
-if(text === "F"){  
-  c.style.background="gold";  
-  c.style.color="black";  
-  return;  
-}  
+// FREE
+if(text === "F"){
+c.style.background="gold";
+c.style.color="black";
+return;
+}
 
-let val = Number(text);  
+let val = Number(text);
 
-if(calledNumbers.includes(val)){  
-  c.style.background = "#00e676";  
-  c.style.color = "white";  
+if(calledNumbers.includes(val)){
+c.style.background = "#00e676";
+c.style.color = "white";
 }
 
 });
@@ -1500,32 +1482,32 @@ function updateCards(){
 
 document.querySelectorAll(".smallCell").forEach(c=>{
 
-let text = c.innerText.trim();  
+let text = c.innerText.trim();
 
-// BINGO header skip  
-if(["B","I","N","G","O"].includes(text)) return;  
+// BINGO header skip
+if(["B","I","N","G","O"].includes(text)) return;
 
-// FREE  
-if(text === "F"){  
-  c.style.background="gold";  
-  c.style.color="black";  
-  return;  
-}  
+// FREE
+if(text === "F"){
+c.style.background="gold";
+c.style.color="black";
+return;
+}
 
-let val = Number(text);  
+let val = Number(text);
 
-if(calledNumbers.includes(val)){  
+if(calledNumbers.includes(val)){
 
-  let wrap = c.closest("[data-mine]");  
-  let isMine = wrap && wrap.dataset.mine === "yes";  
+let wrap = c.closest("[data-mine]");
+let isMine = wrap && wrap.dataset.mine === "yes";
 
-  if(isMine){  
-    c.style.background = "#00e676"; // yours  
-  }else{  
-    c.style.background = "#ff1744"; // others  
-  }  
+if(isMine){
+c.style.background = "#00e676"; // yours
+}else{
+c.style.background = "#ff1744"; // others
+}
 
-  c.style.color="white";  
+c.style.color="white";
 }
 
 });
@@ -1549,6 +1531,6 @@ interval = null;
 }catch(e){}
 }
 
-</script>  
-</body>    
-</html> 
+</script>    
+</body>      
+</html>
