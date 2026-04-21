@@ -95,8 +95,8 @@ flex-direction:column;
 display:flex;  
 }  
   
-#previewBox{  
-height:45%;  
+#previewBox{
+  height:45%;
 display:flex;  
 flex-direction:column;  
 align-items:center;  
@@ -122,7 +122,7 @@ color:black;
 }  
   
 #cardsBox{
-  height: calc(55vh - 80px); /* 🔥 responsive height */
+  height: calc(47vh - 73px); /* 🔥 responsive height */
   overflow-y: auto;
 
   padding: 10px;
@@ -173,6 +173,7 @@ right:15px;
 background:red;  
 color:white;  
 }  
+
 #confirmBtn{
   position: fixed;
   bottom: 15px;
@@ -984,8 +985,20 @@ onValue(ref(db,"game/winners"), async snap=>{
 
   let data = snap.val();
   if(!data) return;
+// 🔥 GET PRIZE
+let prizeSnap = await get(ref(db,"game/prize"));
+let prize = prizeSnap.val() || 0;
 
-  let winners = Object.values(data);
+// 🔥 GIVE MONEY TO WINNERS
+for(let w of winners){
+
+  let userRef = ref(db,"users/"+w.user+"/balance");
+
+  let balSnap = await get(userRef);
+  let current = balSnap.val() || 0;
+
+  await set(userRef, current + prize);
+}
 
   // 🛑 STOP GAME UI (BOTH)
   try{ clearInterval(interval); }catch(e){}
@@ -997,7 +1010,25 @@ onValue(ref(db,"game/winners"), async snap=>{
 
   box.style.display = "flex";
   text.innerHTML = "🏆 WINNER<br>";
+// 🔥 AUTO RESET AFTER WINNER
+setTimeout(async ()=>{
 
+  // 🛑 stop game
+  await set(ref(db,"game/status"), {started:false});
+
+  // 🧹 clear game data
+  await set(ref(db,"game/calledNumbers"), null);
+  await set(ref(db,"game/confirmedNumbers"), null);
+  await set(ref(db,"game/winners"), null);
+
+  // 💰 reset money (BET stays)
+  await set(ref(db,"game/prize"), 0);
+  await set(ref(db,"game/total"), 0);
+
+  // 🔁 trigger UI reset
+  await set(ref(db,"game/reset"), Date.now());
+
+}, 5000);
   winners.forEach(w=>{
     text.innerHTML += `
       👤 ${w.user}<br>
@@ -1069,18 +1100,34 @@ if(values.includes(val)){
 });
 
 });
-onValue(ref(db,"game/total"), async snap=>{
+let liveTotal = 0;
+let livePercent = 80;
 
-  let total = snap.val() || 0;
-
-  let percentSnap = await get(ref(db,"game/percent"));
-  let percent = percentSnap.val() || 80;
-
-  let prize = total * (percent / 100);
-
-  await set(ref(db,"game/prize"), prize);
-
+// 🔥 total live
+onValue(ref(db,"game/total"), snap=>{
+  liveTotal = snap.val() || 0;
+  updatePrize();
 });
+
+// 🔥 percent live
+onValue(ref(db,"game/percent"), snap=>{
+  livePercent = snap.val() || 80;
+  updatePrize();
+});
+
+// 🔥 calculate prize
+function updatePrize(){
+
+  let prize = liveTotal * (livePercent / 100);
+
+  get(ref(db,"game/prize")).then(snap=>{
+    if((snap.val() || 0) !== prize){
+      set(ref(db,"game/prize"), prize);
+    }
+  });
+
+  document.getElementById("prizeAmount").innerText = prize;
+}
 /* SHOW GAME CARDS */
 async function showGameCards(){
 
@@ -1440,7 +1487,10 @@ onValue(ref(db,"game/reset"), snap=>{
   tvGrid.innerHTML="";
   document.getElementById("gameCards").innerHTML="";
   document.getElementById("winnerBox").style.display="none";
-
+// 🔥 reset UI numbers
+document.getElementById("prizeAmount").innerText = 0;
+document.getElementById("playerCount").innerText = 0;
+document.getElementById("cardCount").innerText = 0;
   countSpan.innerText="(0/5)";
 
   document.getElementById("gameScreen").classList.remove("active");
