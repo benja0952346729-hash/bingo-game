@@ -193,19 +193,31 @@ color:white;
 
   box-shadow: 0 0 10px #00e676; /* 🔽 softer */
 }
-#winnerBox{  
-position:fixed;  
-top:0;  
-left:0;  
-width:100%;  
-height:100%;  
-background:rgba(0,0,0,0.95);  
-display:none;  
-justify-content:center;  
-align-items:center;  
-flex-direction:column;  
-z-index:999;  
-}  
+#winnerBox{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.95);
+
+  display:none;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+
+  font-size:22px;
+  text-align:center;
+
+  animation: popWin 0.4s ease;
+
+  z-index:999;
+}
+
+@keyframes popWin{
+  0%{transform:scale(0.7);}
+  100%{transform:scale(1);}
+}
 /* 🔲 TV BOX */  
 #tvBox{  
   height:40vh;  
@@ -492,6 +504,7 @@ const app = initializeApp({
 });
 
 const db = getDatabase(app);
+
 function showMsg(text){
   let box = document.getElementById("msgBox");
 
@@ -539,14 +552,7 @@ if(!username){
   localStorage.setItem("username", username);
 }
 
-// ✅ balance live update
-onValue(ref(db,"users/"+username+"/balance"), snap=>{
 
-  let bal = snap.val() || 0;
-
-  document.getElementById("balance").innerText = bal;
-
-});
 // 🔥 FORCE CHECK ON LOAD
 window.addEventListener("load", async ()=>{
 
@@ -1000,62 +1006,7 @@ speechSynthesis.speak(speech);
 let winnerShown = false;
 let paid = false;
 
-onValue(ref(db,"game/winners"), async snap=>{
 
-  let data = snap.val();
-  if(!data) return;
-
-  // 🔥 CHECK IF ALREADY PAID
-  let paidSnap = await get(ref(db,"game/paid"));
-  if(winners.length > 0){
-
-  let paidSnap = await get(ref(db,"game/paid"));
-
-  if(paidSnap.val() !== true){
-    await set(ref(db,"game/winners"), winners);
-  }
-
-}
-
-  let winners = Object.values(data);
-
-  // 🔥 GET PRIZE
-  let prizeSnap = await get(ref(db,"game/prize"));
-  let totalPrize = prizeSnap.val() || 0;
-
-  // 🔥 SPLIT
-  let share = Math.floor(totalPrize / winners.length);
-
-  // 🔥 PAY
-  for(let w of winners){
-
-    let userRef = ref(db,"users/"+w.user+"/balance");
-
-    let balSnap = await get(userRef);
-    let current = balSnap.val() || 0;
-
-    await set(userRef, current + share);
-  }
-
-  // 🔥 MARK AS PAID
-  await set(ref(db,"game/paid"), true);
-
-  // 🏆 UI
-  let box = document.getElementById("winnerBox");
-  let text = document.getElementById("winnerText");
-
-  box.style.display = "flex";
-  text.innerHTML = "🏆 WINNERS<br>";
-
-  winners.forEach(w=>{
-    text.innerHTML += `
-      👤 ${w.user}<br>
-      🎟 Card ${w.cardId}<br>
-      💰 ${share} ብር<br><br>
-    `;
-  });
-
-});
 
 /* CALLED NUMBERS */
 onValue(ref(db,"game/calledNumbers"),snap=>{
@@ -1116,6 +1067,36 @@ if(values.includes(val)){
 }
 
 });
+
+});
+// 🏆 PLAYER WINNER LISTENER
+onValue(ref(db,"game/winners"), (snap)=>{
+
+  let data = snap.val();
+  if(!data) return;
+
+  let winners = Object.values(data);
+
+  let box = document.getElementById("winnerBox");
+  let text = document.getElementById("winnerText");
+
+  // 🔥 show UI
+  box.style.display = "flex";
+  text.innerHTML = "";
+
+  winners.forEach(w=>{
+    text.innerHTML += `
+      🏆 WINNER<br>
+      👤 ${w.user}<br>
+      🎟 Card: ${w.cardId}<br>
+      🔢 ${w.numbers.join(", ")}<br><br>
+    `;
+  });
+
+  // ⏱ show 5 sec
+  setTimeout(()=>{
+    box.style.display = "none";
+  },5000);
 
 });
 let liveTotal = 0;
@@ -1592,54 +1573,7 @@ function stopAuto(){
     interval = null;
   }catch(e){}
 }
-function checkAllWinners(data){
 
-  let winners = [];
-
-  Object.keys(data).forEach(cardId => {
-
-    let board = boards[cardId];
-    let called = calledNumbers;
-
-    function isWin(pattern){
-
-      return pattern.every(i => {
-        let val = board[i];
-        return val === "FREE" || called.includes(val);
-      });
-
-    }
-
-    let patterns = [
-      [0,1,2,3,4],
-      [5,6,7,8,9],
-      [10,11,12,13,14],
-      [15,16,17,18,19],
-      [20,21,22,23,24],
-
-      [0,5,10,15,20],
-      [1,6,11,16,21],
-      [2,7,12,17,22],
-      [3,8,13,18,23],
-      [4,9,14,19,24],
-
-      [0,6,12,18,24],
-      [4,8,12,16,20]
-    ];
-
-    let win = patterns.some(p => isWin(p));
-
-    if(win){
-      winners.push({
-        user: data[cardId],
-        cardId: cardId
-      });
-    }
-
-  });
-
-  return winners;
-}
 </script>
 
 </body>  
