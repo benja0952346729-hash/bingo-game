@@ -491,6 +491,12 @@ setTimeout(()=>{
 box.style.display = "none";
 },2000);
 }
+onValue(ref(db,"game/debug"), snap=>{
+let msg = snap.val();
+if(!msg) return;
+
+showMsg(msg);
+});
 onValue(ref(db,"game/bet"), snap=>{
 let bet = snap.val() || 0;
 
@@ -555,17 +561,7 @@ if(el) el.classList.add("called");
 
 updateCards();
 
-// 👉 ADD HERE 👇
-(async ()=>{
-let snapAll = await get(ref(db,"game/confirmedNumbers"));
-let dataAll = snapAll.val() || {};
 
-let winners = checkAllWinners(dataAll);
-
-if(winners.length > 0){
-await set(ref(db,"game/winners"), winners);
-}
-})();
 }
 
 });
@@ -734,18 +730,7 @@ onValue(ref(db,"game/prize"), snap=>{
 let val = snap.val() || 0;
 document.getElementById("prizeAmount").innerText = val;
 });
-onValue(ref(db,"game/confirmedNumbers"), snap=>{
 
-let data = snap.val() || {};
-
-let cards = Object.keys(data).length;
-let users = Object.values(data);
-let uniquePlayers = [...new Set(users)].length;
-
-document.getElementById("cardCount").innerText = cards;
-document.getElementById("playerCount").innerText = uniquePlayers;
-
-});
 /* GENERATE BOARD */
 function generateBoard(seed){
 
@@ -993,6 +978,8 @@ let el = document.getElementById("num"+n);
 if(el) el.classList.add("called");
 });
 updateCards();
+updateCards();
+
 
 // 🔥 AUTO TICK (FIXED)
 document.querySelectorAll(".smallCell").forEach(c=>{
@@ -1036,39 +1023,63 @@ onValue(ref(db,"game/winners"), async (snap)=>{
 let data = snap.val();
 if(!data) return;
 
-let winners = Object.values(data);
+let winners = Object.values(data || {});
+if(winners.length === 0) return;
 
-// 🔍 check if YOU are winner
-let me = winners.find(w => w.user == username);
+let me = winners.find(w => String(w.user) === String(username));
+if(!me) return;
 
-if(me){
+// 🔥 force game screen
+selectScreen.classList.remove("active");
+homeScreen.classList.remove("active");
+accountScreen.classList.remove("active");
+document.getElementById("gameScreen").classList.add("active");
 
-// 🔥 get prize
-let prizeSnap = await get(ref(db,"game/prize"));
-let prize = prizeSnap.val() || 0;
+// 🔥 board
+let board = boards[Number(me.cardId)];
 
-let share = prize / winners.length;
+let html = `
+🏆 WINNER<br>
+👤 ${me.user}<br>
+🎟 Card ${me.cardId}
+<div style="
+display:grid;
+grid-template-columns:repeat(5,50px);
+gap:6px;
+margin-top:10px;
+">
+`;
 
-// 🎉 SHOW MESSAGE
-showMsg("🎉 አሸናፊ ነህ! +" + share + " ብር");
+board.forEach((n,i)=>{
 
-// 🏆 show UI (optional)
+let win = me.pattern && me.pattern.includes(i);
+
+html += `
+<div style="
+padding:8px;
+border-radius:6px;
+background:${win ? "#00e676" : "#333"};
+color:${win ? "black" : "white"};
+font-weight:bold;
+">
+${n==="FREE"?"F":n}
+</div>
+`;
+
+});
+
+html += `</div>`;
+
 let box = document.getElementById("winnerBox");
 let text = document.getElementById("winnerText");
 
-text.innerHTML = `
-🏆 YOU WIN<br>
-🎟 Card: ${me.cardId}<br>
-💰 +${share} ብር
-`;
+text.innerHTML = html;
 
 box.style.display = "flex";
 
 setTimeout(()=>{
 box.style.display = "none";
 },5000);
-
-}
 
 });
 
@@ -1092,11 +1103,6 @@ function updatePrize(){
 
 let prize = liveTotal * (livePercent / 100);
 
-get(ref(db,"game/prize")).then(snap=>{
-if((snap.val() || 0) !== prize){
-set(ref(db,"game/prize"), prize);
-}
-});
 
 document.getElementById("prizeAmount").innerText = prize;
 }
