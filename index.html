@@ -1,1554 +1,2088 @@
-<!DOCTYPE html>  <html>     <script src="https://telegram.org/js/telegram-web-app.js"></script>    <head>      <title>Bingo Fixed Pro</title>  <style>      
-#tvInfoBox{    
-  position: fixed;    
-  top: 10px;    
-  left: 10px;  background: rgba(0,0,0,0.7);  
-color: #00e676;  font-weight: bold;
-font-size: 14px;
-
-padding: 6px 12px;
-border-radius: 20px;
-
-z-index: 9999;
-display: flex;
-gap: 10px;
-}
-@keyframes pop{
-0%{transform:scale(1);}
-50%{transform:scale(1.2);}
-100%{transform:scale(1);}
-}
-
-.confirmAnim{
-animation: pop 0.4s ease;
-background:#00e676 !important;
-color:black !important;
-}
-body{
-margin:0;
-font-family:Arial;
-background:#111;
-color:white;
-}
-#accountBtn{
-position: fixed;
-right: 15px;
-
-top: 48%;   /* 👈 ይህ ነው ቁልፉ */
-transform: translateY(-50%);
-
-background: #00c853;
-color: white;
-font-weight: bold;
-
-border-radius: 20px;
-padding: 10px 14px;
-
-z-index: 1000;
-}
-#accountBtn{
-animation: pulseAcc 1.5s infinite;
+<!DOCTYPE html>
+<html lang="am">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Bingo Pro</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#06080f;
+  --surface:#0b0d1a;
+  --card:#101320;
+  --card2:#151828;
+  --border:#1c2038;
+  --border2:#28305a;
+  --gold:#f0c040;
+  --gold2:#b8880a;
+  --gold3:rgba(240,192,64,.1);
+  --green:#00e676;
+  --green2:rgba(0,230,118,.1);
+  --red:#ff3355;
+  --red2:rgba(255,51,85,.1);
+  --blue:#3d7fff;
+  --purple:#9b4dff;
+  --cyan:#00d4ff;
+  --cyan2:rgba(0,212,255,.08);
+  --text:#dde2f0;
+  --muted:#3a4868;
+  --r:11px;
+  --r2:17px;
 }
 
-@keyframes pulseAcc{
-0%{box-shadow:0 0 5px #00c853;}
-50%{box-shadow:0 0 20px #00c853;}
-100%{box-shadow:0 0 5px #00c853;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* ── SCREENS ── */
+.screen{display:none;min-height:100vh;flex-direction:column;}
+.screen.active{display:flex;}
+#selectScreen{padding-bottom:84px;}
+
+/* ── TOPBAR ── */
+.topbar{
+  background:rgba(10,12,24,.95);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  padding:8px 12px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:50;
 }
-#topBar{
-display:flex;
-padding:10px;
-background:#000;
+.logo{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.5rem;letter-spacing:5px;
+  background:linear-gradient(135deg,#ffe066,var(--gold),#c8960a);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 10px rgba(240,192,64,.45));
 }
-
-button{
-padding:10px;
-border:none;
-border-radius:8px;
+.info-badges{display:flex;gap:5px;flex-wrap:wrap;}
+.badge{
+  display:inline-flex;align-items:center;gap:3px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:20px;padding:3px 8px;
+  font-size:0.67rem;font-weight:700;
 }
-
-.miniBtn{
-background:orange;
-color:black;
+.badge .val{color:var(--gold);}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  border:none;border-radius:var(--r);
+  font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;transition:all .15s;
 }
+.btn:active{transform:scale(0.95)!important;}
 
-.cardsBtn{
-margin-left:auto;
-background:orange;
-color:black;
-}
-
-.screen{
-display:none;
-height:100vh;
-flex-direction:column;
-}
-
-.active{
-display:flex;
-}
-
-#previewBox{
-height:45%;
-display:flex;
-flex-direction:column;
-align-items:center;
-border-bottom:2px solid #333;
-}
-
-.board{
-display:grid;
-grid-template-columns:repeat(5,55px);
-gap:5px;
-}
-
-.cell{
-background:#333;
-padding:8px;
-text-align:center;
-border-radius:6px;
-}
-
-.free{
-background:gold;
-color:black;
-}
-
-#cardsBox{
-height: calc(47vh - 73px); /* 🔥 responsive height */
-overflow-y: auto;
-
-padding: 10px;
-padding-bottom: 120px; /* 🔥 space for confirm button */
-}
-
-#cards{
-display:grid;
-grid-template-columns:repeat(5,55px);
-gap:6px;
-justify-content:center;
-padding:10px;
-}
-
-.card{
-background:#333;
-padding:10px;
-text-align:center;
-border-radius:8px;
-cursor:pointer;
-}
-
-.selected{
-background:orange !important;
-}
-.smallBoard{
-display:grid;
-grid-template-columns:repeat(5,32px);
-gap:4px;
-background:#222;
-padding:8px;
-border-radius:10px;
-margin:10px;
-}
-
-.smallCell{
-background:#333;
-padding:5px;
-font-size:11px;
-text-align:center;
-border-radius:4px;
-}
-
-.back{
-position:fixed;
-bottom:15px;
-right:15px;
-background:red;
-color:white;
-}
-
-#confirmBtn{
-position: fixed;
-bottom: 15px;
-left: 50%;
-transform: translateX(-50%);
-
-background: #00e676;
-color: black;
-
-padding: 8px 18px;   /* 🔽 smaller */
-border-radius: 20px; /* 🔽 smaller */
-
-font-size: 14px;     /* 🔽 text smaller */
-font-weight: bold;
-
-z-index: 999999;
-
-box-shadow: 0 0 10px #00e676; /* 🔽 softer */
-}
-#winnerBox{
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.95);
-
-display:none;
-justify-content:center;
-align-items:center;
-flex-direction:column;
-
-font-size:22px;
-text-align:center;
-
-animation: popWin 0.4s ease;
-
-z-index:999;
-}
-
-@keyframes popWin{
-0%{transform:scale(0.7);}
-100%{transform:scale(1);}
-}
-/* 🔲 TV BOX */
-#tvBox{
-height:40vh;
-width:78%;
-
-background:#000;
-padding:10px;
-border-radius:12px;
-
-margin-left:10px;     /* 👉 LEFT */
-margin-top:10px;
-
-border:2px solid #333;
-box-shadow:0 0 10px rgba(0,0,0,0.7);
-}
-
-/* 🔢 GRID */
-#tvGrid{
-display:grid;
-grid-template-columns:repeat(5,1fr);
-gap:4px;
-height:100%;
-}
-
-/* 🔢 NORMAL CELLS */
-.tvCell{
-background:#111;
-color:white;
-
-font-size:14px;     /* 👈 smaller so 11–15 visible */
-font-weight:900;
-
-padding:4px;
-border-radius:6px;
-
-display:flex;
-justify-content:center;
-align-items:flex-start; /* 👈 up */
-
-overflow:hidden;
-}
-
-/* 🟡 BINGO HEADER */
-.tvCell:nth-child(-n+5){
-background:gold;
-color:black;
-
-font-size:15px;
-font-weight:900;
-
-align-items:center;
-}
-
-/* 🔴 CALLED NUMBER */
-.called{
-background:#000 !important;
-color:#ff2d2d !important;
-
-font-size:18px !important;
-font-weight:900;
-
-border:2px solid red;
-
-box-shadow:
-0 0 6px red,
-0 0 14px red;
-
-transform:scale(1.1);
-animation:pulseRed 0.5s ease;
-}
-
-/* 🔥 RED PULSE */
-@keyframes pulseRed{
-0%{transform:scale(1);}
-50%{transform:scale(1.2);}
-100%{transform:scale(1);}
-}
-
-/* ACCOUNT */
-.balance{
-text-align:center;
-font-size:18px;
-margin-top:10px;
-}
-
-.msg{
-text-align:center;
-color:red;
-margin:10px;
-}
-
-.grid{
-display:grid;
-grid-template-columns:repeat(3,1fr);
-gap:10px;
-padding:15px;
-}
-
-.bet{
-background:#1f1f1f;
-padding:14px;
-border-radius:12px;
-color:white;
-}
-
-.modal{
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.7);
-display:none;
-justify-content:center;
-align-items:center;
-}
-
-.popup{
-background:#1e1e1e;
-padding:20px;
-border-radius:15px;
-width:90%;
-max-width:350px;
-text-align:center;
-}
-
-.upload{
-border:2px dashed #555;
-padding:30px;
-border-radius:10px;
-cursor:pointer;
-margin-top:10px;
-}
-
-input{
-display:none;
-}
-
-.btns{
-display:flex;
-gap:10px;
-margin-top:15px;
-}
-
-.send{
-flex:1;
-background:#00c853;
-padding:10px;
-border-radius:20px;
-}
-
-.close{
-flex:1;
-background:#f44336;
-padding:10px;
-border-radius:20px;
-}
 #liveBtn{
-display:none;
-background:#ff1744;
-color:white;
-border-radius:20px;
-font-weight:bold;
-padding:8px 14px;
-animation:pulse 1s infinite;
+  display:none;
+  background:linear-gradient(135deg,#cc001e,var(--red));
+  color:#fff;padding:5px 12px;font-size:0.75rem;
+  border-radius:20px;border:none;cursor:pointer;font-weight:700;font-family:'Outfit',sans-serif;
+  animation:livePulse 1.4s infinite;
+}
+@keyframes livePulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,51,85,.6);}
+  60%{box-shadow:0 0 0 8px rgba(255,51,85,0);}
 }
 
-@keyframes pulse{
-0%{box-shadow:0 0 5px #ff1744;}
-50%{box-shadow:0 0 20px #ff1744;}
-100%{box-shadow:0 0 5px #ff1744;}
+/* ── BET BOX ── */
+.bet-box{
+  margin:7px 10px 5px;
+  background:linear-gradient(135deg,var(--card),var(--card2));
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:9px 13px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:relative;overflow:hidden;
 }
-#betLiveBox{
-position: fixed;
-top: 10px;
-right: 10px;
-background: rgba(0,0,0,0.7);
-color: #00e676;
-font-weight: bold;
-font-size: 14px;
-padding: 6px 12px;
-border-radius: 20px;
-z-index: 9999;
+.bet-box::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,transparent 50%,rgba(240,192,64,.03));
+  pointer-events:none;
 }
-#msgBox{
-position: fixed;
-top: 50%;
-left: 50%;
-transform: translate(-50%, -50%);
-
-background: #ffffff;   /* white */
-color: #000000;        /* black text */
-
-padding: 20px 40px;
-border-radius: 30px;
-
-font-weight: bold;
-font-size: 20px;
-
-min-width: 250px;
-max-width: 80%;
-
-text-align: center;
-
-display: none;
-z-index: 999999;
-
-box-shadow: 0 0 20px rgba(0,0,0,0.5);
+.bet-label{font-size:0.6rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:1px;}
+.bet-val{
+  font-family:'Bebas Neue',sans-serif;font-size:1.45rem;color:var(--gold);
+  text-shadow:0 0 14px rgba(240,192,64,.35);
 }
-</style>  </head>  <body>
-
-<div id="topBar">    
- <div id="tvInfoBox">    
-  👥 <span id="playerCount">0</span> |    
-  🎟 <span id="cardCount">0</span> |    
-  💸 <span id="betAmountTop">0</span> |    
-  🏆 <span id="prizeAmount">0</span>    
-</div>    
-<div id="msgBox"></div>    
-  <!-- ✅ LIVE BET BOX (ONLY ONE) -->    
-  <div id="betLiveBox">    
-  </div>  <button class="miniBtn" onclick="startGame()">▶</button>    <button id="liveBtn" onclick="goLive()" style="display:none;">    
-    🔴 LIVE    
-  </button>  <button class="cardsBtn" onclick="openMyCards()">🎮 MY CARDS</button>  <button onclick="resetGame()">🔄 Reset</button>
-
-<button onclick="forceReset()">🔥 FIX</button>
-
-</div>    
-</div>  <!-- SELECT SCREEN -->  <div id="selectScreen" class="screen active">  <div id="previewBox">      
-<h3>Preview <span id="count">(0/5)</span></h3>      
-<div id="preview"></div> <button id="confirmBtn" onclick="confirmCard()">✔ Confirm</button>  <button id="accountBtn" onclick="openAccount()">👤 Account</button>  </div>  <div id="cardsBox">      
-<h2>Choose Card</h2>      
-<div id="cards"></div>      
-</div>  </div>  <!-- MY CARDS -->  <div id="homeScreen" class="screen">      
-<div id="myBoards"></div>      
-<button class="back" onclick="goBack()">⬅ Back</button>      
-</div>  <!-- ACCOUNT -->  <div id="accountScreen" class="screen">      
-<div id="msgBox"></div>    
-<h2 style="text-align:center;">My Account</h2>  <div class="balance">💰 <span id="balance">0</span> ብር</div>      
-<div id="msg" class="msg">👉 ብር ያስገቡ</div>  <div id="betGrid" class="grid"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>      
-<!-- GAME SCREEN -->      
-<div id="gameScreen" class="screen"><div style="text-align:center; margin:5px;">    
-💸 Bet: <span id="betAmountGame">0</span> ብር    
-</div>    
-<div id="tvBox">      
-<div id="tvGrid"></div>      
-</div>  <div id="gameCards"></div>  <button class="back" onclick="goBack()">⬅ Back</button>  </div>  <!-- WINNER -->  <div id="winnerBox">      
-<h1 id="winnerText"></h1>  <div id="winnerBoard"></div>  </div>  <!-- PAYMENT MODAL -->  <div id="modal" class="modal">  <div class="popup">  <h3 id="amountText"></h3>  <label class="upload">      
-📤 ፎቶ ላክ      
-<input type="file" id="fileInput" accept="image/*">      
-</label>  <div class="btns">      
-<button class="send" onclick="send()">Send</button>      
-<button class="close" onclick="closePay()">Close</button>      
-</div>  </div>      
-</div>      
-<script type="module">  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";    
-import { getDatabase, ref, set, onValue, get, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";    
-import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";    
-const app = initializeApp({    
-  apiKey: "AIzaSyCHXEQ8nx1SYeQm1eptTf2xU_WXKG4lowM",    
-  authDomain: "house-rent-app-3674a.firebaseapp.com",  databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com",  projectId: "house-rent-app-3674a",
-storageBucket: "house-rent-app-3674a.firebasestorage.app",
-messagingSenderId: "732772696627",
-appId: "1:732772696627:web:694a36c4729b57209ed946"
-});
-
-const db = getDatabase(app);
-
-function showMsg(text){
-let box = document.getElementById("msgBox");
-
-box.innerText = text;
-
-box.style.display = "block";
-box.style.opacity = "1";
-
-setTimeout(()=>{
-box.style.display = "none";
-},2000);
-}
-onValue(ref(db,"game/debug"), snap=>{
-let msg = snap.val();
-if(!msg) return;
-
-showMsg(msg);
-});
-onValue(ref(db,"game/bet"), snap=>{
-let bet = snap.val() || 0;
-
-let topEl = document.getElementById("betAmountTop");
-let gameEl = document.getElementById("betAmountGame");
-
-if(topEl) topEl.innerText = bet;
-if(gameEl) gameEl.innerText = bet;
-
-// 🔥 small animation (pulse)
-let box = document.getElementById("betLiveBox");
-if(box){
-box.style.transform = "scale(1.1)";
-setTimeout(()=>{
-box.style.transform = "scale(1)";
-},200);
-}
-});
-
-// ✅ username
-let tg = window.Telegram.WebApp;
-
-let username;
-
-if(tg.initDataUnsafe.user){
-username = String(tg.initDataUnsafe.user.id);
-}else{
-alert("Open inside Telegram!");
+.prize-val{
+  font-family:'Bebas Neue',sans-serif;font-size:1.45rem;color:var(--green);
+  text-shadow:0 0 14px rgba(0,230,118,.35);
 }
 
-if(!username){
-username = prompt("Enter your name");
-localStorage.setItem("username", username);
+/* ── COUNTDOWN ── */
+#countdownBar{
+  display:none;
+  margin:0 10px 6px;
+  background:linear-gradient(135deg,#00060e,#000d1a);
+  border:1px solid rgba(0,212,255,.25);
+  border-radius:var(--r);
+  padding:9px 13px;
+  align-items:center;justify-content:space-between;gap:8px;
+  animation:cdGlow 2s infinite alternate;
+}
+@keyframes cdGlow{
+  from{box-shadow:0 0 6px rgba(0,212,255,.1);}
+  to{box-shadow:0 0 20px rgba(0,212,255,.32);}
+}
+#countdownBar.active{display:flex;}
+.cd-bar-label{font-size:0.58rem;color:var(--cyan);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:1px;}
+.cd-bar-val{
+  font-family:'Bebas Neue',sans-serif;font-size:2.2rem;color:var(--cyan);line-height:1;
+  text-shadow:0 0 18px rgba(0,212,255,.55);
+}
+.cd-bar-sub{font-size:0.64rem;color:var(--muted);margin-top:2px;}
+.cd-pulse{
+  width:9px;height:9px;border-radius:50%;background:var(--cyan);flex-shrink:0;
+  animation:cdDotPulse 1s infinite;
+}
+@keyframes cdDotPulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.2;transform:scale(.55);}}
+
+/* ── CARD PREVIEW PANEL ── */
+#cardPreviewPanel{
+  display:none;
+  width:80%;
+  margin:0 auto 6px;
+  background:linear-gradient(135deg,#080e00,#001008);
+  border:1.5px solid rgba(240,192,64,.4);
+  border-radius:var(--r);
+  padding:7px 9px;
+  animation:previewIn .22s cubic-bezier(.34,1.56,.64,1);
+  position:relative;
+}
+@keyframes previewIn{0%{transform:scale(.93) translateY(6px);opacity:0;}100%{transform:scale(1) translateY(0);opacity:1;}}
+#cardPreviewPanel.show{display:block;}
+.preview-header{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;
+}
+.preview-title{
+  font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;color:var(--gold);
+}
+.preview-close{
+  background:rgba(255,51,85,.12);border:1px solid var(--red);color:var(--red);
+  border-radius:5px;padding:2px 7px;font-size:0.6rem;font-weight:700;cursor:pointer;
+}
+.preview-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;}
+.preview-cell{
+  background:var(--surface);border-radius:2px;padding:2px 1px;
+  text-align:center;font-size:0.48rem;font-weight:700;
+  border:1px solid var(--border);
+}
+.preview-cell.ph{
+  background:var(--gold);color:#06080f;
+  font-family:'Bebas Neue',sans-serif;font-size:0.55rem;border-color:var(--gold);
+}
+.preview-cell.pf{background:#003d1e;color:var(--green);border-color:#004d26;}
+
+/* ── LEGEND ── */
+.legend-row{
+  display:flex;align-items:center;gap:7px;
+  padding:5px 10px 4px;flex-wrap:wrap;
+  background:rgba(8,10,20,.7);
+  border-bottom:1px solid var(--border);
+}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:0.62rem;color:var(--muted);}
+.legend-dot{width:9px;height:9px;border-radius:2px;display:inline-block;flex-shrink:0;}
+.legend-dot.taken-dot{background:var(--red2);border:1.5px solid var(--red);}
+.legend-dot.mine-dot{background:var(--green2);border:1.5px solid var(--green);}
+.legend-dot.free-dot{background:var(--card);border:1.5px solid var(--border);}
+.count-row{margin-left:auto;font-size:0.62rem;}
+
+/* ── LEADERBOARD ── */
+#leaderboardPanel{display:none;margin:0 10px 8px;flex-direction:column;gap:6px;}
+#leaderboardPanel.show{display:flex;}
+.lb-header{display:flex;align-items:center;justify-content:space-between;padding:0 2px;}
+.lb-title{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:3px;color:var(--gold);}
+.lb-called-badge{
+  display:flex;align-items:center;gap:4px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:20px;padding:3px 9px;font-size:0.65rem;
+}
+.lb-called-badge .lbc-num{font-family:'Bebas Neue',sans-serif;font-size:.9rem;color:var(--red);}
+.lb-row{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r);padding:8px 10px;
+  display:flex;align-items:center;gap:8px;
+  position:relative;overflow:hidden;transition:border-color .25s;
+}
+.lb-row.lb-mine{
+  border-color:rgba(240,192,64,.4);
+  background:linear-gradient(135deg,#120e00,#0a0d00);
+}
+.lb-row.lb-top{border-color:rgba(255,51,85,.4);}
+.lb-bar{
+  position:absolute;left:0;top:0;bottom:0;
+  background:linear-gradient(90deg,rgba(0,230,118,.07),transparent);
+  transition:width .5s ease;pointer-events:none;
+}
+.lb-row.lb-mine .lb-bar{background:linear-gradient(90deg,rgba(240,192,64,.09),transparent);}
+.lb-rank{
+  font-family:'Bebas Neue',sans-serif;font-size:1.2rem;
+  width:22px;text-align:center;flex-shrink:0;color:var(--muted);
+}
+.lb-rank.r1{color:#f0c040;}.lb-rank.r2{color:#aab4c8;}.lb-rank.r3{color:#cd7f32;}
+.lb-info{flex:1;min-width:0;}
+.lb-name{font-size:0.75rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lb-card-id{font-size:0.58rem;color:var(--muted);margin-top:1px;}
+.lb-hits{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0;}
+.lb-hit-num{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;line-height:1;color:var(--green);}
+.lb-hit-label{font-size:0.54rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+.lb-progress-dots{display:flex;gap:2px;flex-wrap:wrap;max-width:72px;justify-content:flex-end;}
+.lb-dot{width:6px;height:6px;border-radius:2px;background:var(--border);transition:background .25s;}
+.lb-dot.hit{background:var(--green);}
+.lb-dot.hit-mine{background:var(--gold);}
+.lb-empty{text-align:center;padding:16px;color:var(--muted);font-size:0.78rem;}
+
+/* ── CARDS SECTION ── */
+.cards-section{padding:8px 10px;}
+.cards-section h3{
+  font-size:0.65rem;letter-spacing:2.5px;text-transform:uppercase;
+  color:var(--cyan);margin-bottom:7px;
+}
+.cards-grid{
+  display:grid;
+  grid-template-columns:repeat(10,1fr);
+  gap:3px;
+  grid-auto-rows:1fr;
+}
+.card-num{
+  background:var(--card);
+  border:1.5px solid var(--border);
+  border-radius:6px;
+  padding:0;
+  text-align:center;font-weight:700;font-size:0.75rem;
+  cursor:pointer;transition:all .12s;min-width:0;
+  position:relative;
+  aspect-ratio:1;
+  display:flex;align-items:center;justify-content:center;
+}
+.card-num:active{transform:scale(.9);}
+.card-num:hover:not(.taken):not(.mine){
+  border-color:var(--gold);
+  background:var(--gold3);
+  color:var(--gold);
+}
+.card-num.selected{
+  background:linear-gradient(135deg,#1a1200,#0d0e00);
+  color:var(--gold);border-color:var(--gold);
+  box-shadow:0 0 10px rgba(240,192,64,.25);
+}
+.card-num.mine{
+  background:linear-gradient(135deg,#002e18,#001e10);
+  color:var(--green);border-color:#00512a;cursor:default;
+}
+.card-num.taken{
+  background:linear-gradient(135deg,#1e000a,#130008)!important;
+  color:var(--red)!important;border-color:#550020!important;
+  cursor:not-allowed!important;opacity:.8;
+}
+.card-num.just-taken{animation:flashTaken .55s ease forwards;}
+.card-num.just-mine{animation:flashMine .55s ease forwards;}
+
+@keyframes flashTaken{
+  0%{background:var(--red);color:#fff;transform:scale(1.3);box-shadow:0 0 16px var(--red);}
+  60%{transform:scale(1.1);}
+  100%{background:linear-gradient(135deg,#1e000a,#130008);color:var(--red);border-color:#550020;transform:scale(1);box-shadow:none;}
+}
+@keyframes flashMine{
+  0%{background:var(--green);color:#06080f;transform:scale(1.3);box-shadow:0 0 16px var(--green);}
+  60%{transform:scale(1.1);}
+  100%{background:linear-gradient(135deg,#002e18,#001e10);color:var(--green);border-color:#00512a;transform:scale(1);box-shadow:none;}
 }
 
-// 🔥 FORCE CHECK ON LOAD
-window.addEventListener("load", async ()=>{
+/* ── BOTTOM BAR ── */
+#bottomBar{
+  position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:linear-gradient(180deg,transparent 0%,rgba(6,8,15,.98) 28%);
+  padding:8px 12px 16px;
+  display:flex;align-items:center;gap:8px;
+}
+#confirmBtn{
+  flex:1;
+  background:linear-gradient(135deg,#00c060,var(--green));
+  color:#06080f;padding:13px 18px;border-radius:var(--r2);
+  font-size:0.9rem;font-weight:900;
+  box-shadow:0 4px 18px rgba(0,230,118,.3);
+  border:none;cursor:pointer;transition:all .15s;
+}
+#confirmBtn:active{transform:scale(.97);}
+#confirmBtn .sel-badge{
+  background:rgba(0,0,0,.2);border-radius:8px;
+  padding:1px 7px;font-size:0.7rem;margin-left:3px;
+}
+#accountBtn{
+  flex-shrink:0;width:50px;height:50px;
+  background:linear-gradient(135deg,#121828,#0b0d18);
+  border:1.5px solid rgba(240,192,64,.4);
+  border-radius:var(--r);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  box-shadow:0 0 0 2px rgba(240,192,64,.06),0 4px 14px rgba(0,0,0,.5);
+  cursor:pointer;transition:all .18s;
+  animation:accGlow 2.5s infinite;
+}
+#accountBtn:active{transform:scale(.92);}
+@keyframes accGlow{
+  0%,100%{box-shadow:0 0 0 2px rgba(240,192,64,.06),0 4px 14px rgba(0,0,0,.5);}
+  50%{box-shadow:0 0 0 4px rgba(240,192,64,.14),0 4px 18px rgba(240,192,64,.14);}
+}
+#accountBtn .acc-icon{font-size:1rem;line-height:1;}
+#accountBtn .acc-label{font-size:0.4rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);font-weight:700;}
 
-let snap = await get(ref(db,"game/status"));
-let data = snap.val();
+/* ── GAME SCREEN ── */
+#gameScreen{padding-bottom:0;flex-direction:column;height:100vh;overflow:hidden;}
+#gameScreen.active{display:flex;}
 
-if(data && data.started){
+.tv-wrap{
+  background:#000;
+  border:1px solid var(--border);
+  border-radius:8px;padding:5px;
+  box-shadow:0 0 16px rgba(0,0,0,.5);
+}
+.tv-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;}
+.tv-cell{
+  background:#0d0f18;color:var(--text);
+  font-size:8px;font-weight:900;
+  padding:1px;border-radius:3px;
+  display:flex;justify-content:center;align-items:center;
+  min-height:15px;min-width:15px;transition:all .18s;
+}
+.tv-cell.header{
+  background:var(--gold);color:#06080f;
+  font-family:'Bebas Neue',sans-serif;font-size:.7rem;
+}
+.tv-cell.called{
+  background:#0a0000!important;color:var(--red)!important;
+  border:1.5px solid var(--red);font-size:8px!important;
+  box-shadow:0 0 7px rgba(255,51,85,.5);
+  animation:numPop .28s ease;
+}
+@keyframes numPop{0%{transform:scale(1);}50%{transform:scale(1.06);}100%{transform:scale(1);}}
 
-gameStarted = true;
+.last-called-bar{
+  margin:0 10px 8px;
+  background:linear-gradient(135deg,var(--card),var(--card2));
+  border:1px solid var(--border);
+  border-radius:var(--r);padding:9px 14px;
+  display:flex;align-items:center;justify-content:space-between;overflow:hidden;
+}
+.lc-label{font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;}
+.lc-num{
+  font-family:'Bebas Neue',sans-serif;font-size:2.6rem;
+  color:var(--gold);text-shadow:0 0 18px rgba(240,192,64,.45);line-height:1;
+}
+.lc-letter{color:var(--red);}
+.mini-balls{display:flex;flex-wrap:wrap;gap:3px;max-width:170px;justify-content:flex-end;overflow:hidden;}
+.mball{
+  width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.55rem;font-weight:900;
+}
+.bB{background:#2260e0;color:#fff;}
+.bI{background:#8833ee;color:#fff;}
+.bN{background:var(--red);color:#fff;}
+.bG{background:#00a844;color:#fff;}
+.bO{background:var(--gold);color:#06080f;}
 
-selectScreen.classList.remove("active");
-homeScreen.classList.remove("active");
-accountScreen.classList.remove("active");
-document.getElementById("gameScreen").classList.add("active");
-
-buildTV();
-await showGameCards();
-
-let snapNums = await get(ref(db,"game/calledNumbers"));
-let nums = Object.values(snapNums.val() || {});
-calledNumbers = nums;
-
-nums.forEach(n=>{
-let el = document.getElementById("num"+n);
-if(el) el.classList.add("called");
-});
-
-updateCards();
-
-
+/* ── GAME CARDS ── */
+.game-cards-wrap{padding:0 10px;}
+.game-cards-wrap h4{font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:6px;}
+.cards-section-label{
+  font-size:0.6rem;letter-spacing:2.5px;text-transform:uppercase;
+  padding:4px 8px;margin-bottom:5px;border-radius:6px;
+  display:inline-block;font-weight:700;
+}
+.label-mine{background:#002a14;color:var(--green);}
+.label-others{background:#160008;color:var(--red);}
+.game-board-wrap{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r);padding:8px;margin-bottom:7px;
+}
+.game-board-wrap.other-card{border-color:#2a0818;background:#0d0410;}
+.game-board-title{font-size:0.72rem;font-weight:700;margin-bottom:6px;}
+.game-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;}
+.gc{
+  background:var(--surface);border-radius:4px;
+  padding:5px 1px;text-align:center;font-size:0.68rem;font-weight:700;
+  transition:background .18s;
+}
+.gc.header{background:var(--gold);color:#06080f;font-family:'Bebas Neue',sans-serif;font-size:0.8rem;}
+.gc.free-cell{background:#003318;color:var(--green);}
+.gc.hit-mine{
+  background:linear-gradient(135deg,#00a844,var(--green));
+  color:#06080f;
+}
+.gc.hit-other{background:linear-gradient(135deg,#440018,var(--red));color:#fff;}
+#gameScreen .tv-wrap{margin:0;width:100%;}
+#gameScreen .gc{padding:2px 1px;font-size:0.5rem;border-radius:2px;}
+#gameScreen .gc.header{font-size:0.6rem;}
+#gameScreen .game-board-wrap{padding:4px;margin-bottom:4px;}
+#gameScreen .game-board-title{font-size:0.6rem;margin-bottom:3px;}
+#gameScreen .lb-row{padding:3px 5px;border-radius:6px;gap:3px;margin-bottom:2px;}
+#gameScreen .lb-rank{font-size:0.75rem;width:13px;}
+#gameScreen .lb-name{font-size:0.54rem;}
+#gameScreen .lb-card-id{font-size:0.46rem;}
+#gameScreen .lb-hit-num{font-size:0.8rem;}
+#gameScreen .lb-hit-label{font-size:0.38rem;}
+#gameScreen .lb-progress-dots{display:none;}
+#gameScreen .tv-cell.header{font-size:0.7rem;}
+#gameScreen .tv-cell.called{font-size:8px!important;}
+.back-btn{
+  position:fixed;bottom:14px;right:14px;
+  background:var(--red);color:#fff;
+  padding:9px 14px;border-radius:var(--r);
+  font-size:0.75rem;font-weight:700;z-index:100;border:none;cursor:pointer;
 }
 
-});
-onValue(ref(db,"game/status"), async (snap)=>{
+/* ── ACCOUNT SCREEN ── */
+#accountScreen{
+  padding:0 0 80px;
+  background:radial-gradient(ellipse at 20% 0%,rgba(10,20,10,.8) 0%,var(--bg) 60%);
+}
+.acc-header{
+  padding:14px;
+  background:linear-gradient(180deg,rgba(240,192,64,.05) 0%,transparent 100%);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+.acc-header-back{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r);padding:7px 12px;font-size:0.75rem;color:var(--muted);cursor:pointer;
+}
+.acc-header-title{
+  font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:4px;color:var(--gold);
+}
+.acc-profile{
+  margin:13px 12px 0;
+  background:linear-gradient(135deg,#0e141c,#090d12);
+  border:1px solid rgba(240,192,64,.2);
+  border-radius:var(--r2);padding:16px;position:relative;overflow:hidden;
+}
+.acc-profile::before{
+  content:'';position:absolute;top:-30px;right:-30px;
+  width:100px;height:100px;border-radius:50%;
+  background:radial-gradient(circle,rgba(240,192,64,.1),transparent 70%);
+}
+.acc-profile-row{display:flex;align-items:center;gap:12px;margin-bottom:13px;}
+.acc-avatar{
+  width:46px;height:46px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.2rem;flex-shrink:0;
+  box-shadow:0 0 18px rgba(240,192,64,.25);
+}
+.acc-user-info{flex:1;min-width:0;}
+.acc-uid-label{font-size:0.6rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:1px;}
+.acc-uid-val{font-size:0.85rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.acc-balance-row{display:flex;align-items:flex-end;gap:5px;}
+.acc-bal-label{font-size:0.6rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:3px;}
+.acc-bal-val{
+  font-family:'Bebas Neue',sans-serif;font-size:2.8rem;line-height:1;
+  color:var(--gold);text-shadow:0 0 24px rgba(240,192,64,.35);
+}
+.acc-bal-unit{font-size:0.9rem;font-weight:700;color:var(--gold2);margin-bottom:5px;}
 
-let data = snap.val();
+.dep-section{margin:13px 12px 0;}
+.dep-section-title{
+  font-size:0.6rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--cyan);
+  margin-bottom:8px;display:flex;align-items:center;gap:5px;
+}
+.dep-section-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);}
+.deposit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;}
+.dep-btn{
+  background:linear-gradient(135deg,var(--card),var(--card2));
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 4px;text-align:center;cursor:pointer;
+  transition:all .15s;font-weight:700;font-size:0.85rem;
+}
+.dep-btn:hover{border-color:rgba(240,192,64,.5);color:var(--gold);}
+.dep-btn:active{transform:scale(.95);}
+.dep-btn .dep-etb{font-size:0.6rem;color:var(--muted);display:block;margin-top:1px;letter-spacing:1px;}
+.acc-my-cards-btn{
+  margin:0 12px;
+  background:linear-gradient(135deg,#070f08,#040a05);
+  border:1px solid rgba(0,230,118,.15);border-radius:var(--r);
+  padding:12px;display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;transition:all .13s;
+}
+.acc-my-cards-btn:hover{border-color:rgba(0,230,118,.35);}
+.acc-my-cards-btn:active{transform:scale(.98);}
+.acc-my-cards-left{display:flex;align-items:center;gap:9px;}
+.acc-my-cards-icon{font-size:1.2rem;}
+.acc-my-cards-text{font-size:0.85rem;font-weight:700;color:var(--green);}
+.acc-my-cards-sub{font-size:0.65rem;color:var(--muted);}
+.acc-my-cards-arrow{color:var(--muted);font-size:0.95rem;}
 
-console.log("STATUS:", data); // 👈 DEBUG
+/* ── OTHER SCREENS ── */
+#myCardsScreen{padding:14px 12px 80px;}
+#winHistoryScreen,#historyScreen{padding:0 0 80px;}
 
-let liveBtn = document.getElementById("liveBtn");
+/* ── WINNER OVERLAY ── */
+#winnerOverlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.96);
+  z-index:9999;
+  justify-content:center;align-items:center;flex-direction:column;
+  overflow:hidden;
+}
+/* ── WINNER BOARD ── */
+.wb-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-top:6px;}
+.wb-cell{
+  background:#0a1a0a;border-radius:4px;padding:4px 2px;
+  text-align:center;font-size:0.62rem;font-weight:700;
+  border:1px solid #1a3a1a;color:#4a6a4a;
+}
+.wb-cell.wh{background:var(--gold);color:#06080f;font-family:'Bebas Neue',sans-serif;font-size:0.65rem;}
+.wb-cell.hit{background:#003318;color:var(--green);border-color:#005a2a;}
+.wb-cell.win-line{
+  background:linear-gradient(135deg,#00a844,var(--green));
+  color:#06080f;border-color:var(--green);
+  box-shadow:0 0 8px rgba(0,230,118,.6);
+  font-weight:900;
+}
+.wb-cell.free{background:#002a14;color:var(--green);}
+#winnerOverlay.show{display:flex;}
+.confetti-wrap{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.confetti-dot{
+  position:absolute;width:9px;height:9px;border-radius:2px;
+  animation:confettiFall linear infinite;
+}
+@keyframes confettiFall{
+  0%{transform:translateY(-20px) rotate(0deg);opacity:1;}
+  100%{transform:translateY(110vh) rotate(720deg);opacity:0;}
+}
+.winner-popup{
+  background:linear-gradient(135deg,#080e00,#001008);
+  border:2px solid var(--gold);
+  border-radius:22px;padding:18px 16px;text-align:center;
+  max-width:300px;width:88%;
+  max-height:90vh;
+  overflow-y:auto;
+  animation:winPop .55s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 0 50px rgba(240,192,64,.35),0 0 100px rgba(240,192,64,.12);
+  position:relative;z-index:1;
+}
+@keyframes winPop{
+  0%{transform:scale(.35) rotate(-12deg);opacity:0;}
+  70%{transform:scale(1.04) rotate(1.5deg);}
+  100%{transform:scale(1) rotate(0deg);opacity:1;}
+}
+.winner-popup .trophy{
+  font-size:3.5rem;
+  animation:trophyBounce .9s ease infinite alternate;
+  display:block;margin-bottom:8px;
+}
+@keyframes trophyBounce{from{transform:scale(1) rotate(-4deg);}to{transform:scale(1.1) rotate(4deg);}}
+.winner-popup h1{
+  font-family:'Bebas Neue',sans-serif;font-size:3.5rem;
+  background:linear-gradient(135deg,var(--gold),var(--green));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  letter-spacing:8px;line-height:1;margin-bottom:6px;
+}
+.winner-popup .winner-name{font-size:1.15rem;font-weight:900;color:#fff;margin-bottom:5px;}
+.winner-popup .winner-card-info{font-size:0.82rem;color:var(--muted);margin-bottom:12px;white-space:pre-line;}
+.winner-popup .prize-display{
+  font-family:'Bebas Neue',sans-serif;font-size:2.8rem;color:var(--green);
+  text-shadow:0 0 26px rgba(0,230,118,.5);line-height:1;margin-bottom:3px;
+}
+.winner-popup .prize-label{font-size:0.72rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;}
+.winner-popup .countdown-bar{margin-top:16px;height:3px;background:var(--border);border-radius:3px;overflow:hidden;}
+.winner-popup .countdown-bar .fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--gold),var(--green));
+  border-radius:3px;width:100%;
+  animation:cdFill 5s linear forwards;
+}
+@keyframes cdFill{from{width:100%;}to{width:0%;}}
+.winner-popup .close-hint{font-size:0.65rem;color:var(--muted);margin-top:6px;}
 
-if(!data){
-return;
+/* ── TOAST ── */
+#toast{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:#fff;color:#06080f;
+  padding:12px 24px;border-radius:16px;
+  font-weight:700;font-size:0.9rem;display:none;z-index:9999;
+  box-shadow:0 4px 26px rgba(0,0,0,.4);text-align:center;min-width:180px;
 }
 
-// 🔴 LIVE BUTTON
-if(data.started){
-if(liveBtn) liveBtn.style.display = "inline-block";
-}else{
-if(liveBtn) liveBtn.style.display = "none";
+/* ── MODALS ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.88);z-index:500;
+  justify-content:center;align-items:center;
 }
-
-// ✅ GAME START
-if(data.started){
-
-console.log("GAME STARTED 🔥");
-
-gameStarted = true;
-
-// 👉 FORCE ENTER GAME
-selectScreen.classList.remove("active");
-homeScreen.classList.remove("active");
-accountScreen.classList.remove("active");
-document.getElementById("gameScreen").classList.add("active");
-
-// 🔄 rebuild UI
-tvGrid.innerHTML = "";
-document.getElementById("gameCards").innerHTML = "";
-
-buildTV();
-await showGameCards();
-
-// 🔢 load numbers
-let snapNums = await get(ref(db,"game/calledNumbers"));
-let nums = Object.values(snapNums.val() || {});
-calledNumbers = nums;
-
-nums.forEach(n=>{
-let el = document.getElementById("num"+n);
-if(el) el.classList.add("called");
-});
-
-updateCards();
-
-}else{
-
-console.log("GAME STOPPED ⛔");
-
-gameStarted = false;
-
-clearInterval(interval);
-interval = null;
-
-document.getElementById("gameScreen").classList.remove("active");
-homeScreen.classList.remove("active");
-accountScreen.classList.remove("active");
-selectScreen.classList.add("active");
-
-tvGrid.innerHTML="";
-document.getElementById("gameCards").innerHTML="";
-previewDiv.innerHTML="";
-
-confirmedCards = [];
-calledNumbers = [];
-
-document.querySelectorAll(".card").forEach(card=>{
-card.classList.remove("selected");
-card.style.background="#333";
-card.style.color="white";
-});
-
-countSpan.innerText="(0/5)";
-
+.modal-overlay.open{display:flex;}
+.modal-box{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r2);padding:20px;width:90%;max-width:320px;
+  animation:modalIn .28s cubic-bezier(.34,1.56,.64,1);
 }
-
-});
-const storage = getStorage(app);
-
-/* GAME STATE */
-const gameRef = ref(db,"game/status");
-
-let interval = null;
-let gameStarted = false;
-let calledNumbers = [];
-let voiceReady = false;
-
-document.body.addEventListener("click", ()=>{
-if(!voiceReady){
-let u = new SpeechSynthesisUtterance(" ");
-speechSynthesis.speak(u);
-voiceReady = true;
+@keyframes modalIn{0%{transform:scale(.8);opacity:0;}100%{transform:scale(1);opacity:1;}}
+.modal-title{
+  font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:3px;
+  color:var(--gold);margin-bottom:13px;text-align:center;
 }
-});
-let audioUnlocked = false; // ✅ ADD THIS
-
-/* USER */
-let userId = username;
-
-/* LOCAL DATA */
-let confirmedCards = [];
-let balance = 0;
-
-onValue(ref(db,"users/"+username+"/balance"), snap=>{
-balance = snap.val() || 0;
-document.getElementById("balance").innerText = balance;
-});
-/* DOM */
-const selectScreen = document.getElementById("selectScreen");
-const homeScreen = document.getElementById("homeScreen");
-const accountScreen = document.getElementById("accountScreen");
-
-const cardsDiv = document.getElementById("cards");
-const previewDiv = document.getElementById("preview");
-const countSpan = document.getElementById("count");
-const tvGrid = document.getElementById("tvGrid");
-
-/* INIT */
-countSpan.innerText = "(" + confirmedCards.length + "/5)";
-document.getElementById("balance").innerText = balance;
-onValue(ref(db,"game/confirmedNumbers"), snap=>{
-
-let data = snap.val() || {};
-
-confirmedCards = [];
-let myCount = 0;
-
-document.querySelectorAll(".card").forEach(card=>{
-
-let id = card.innerText;
-
-if(data[id] === userId){
-confirmedCards.push(Number(id));
-myCount++;
-
-card.style.background = "#00e676";
-card.style.color = "black";
-
-}else if(data[id]){
-
-card.style.background = "#ff1744";
-card.style.color = "white";
-
-}else{
-
-card.style.background = "#333";
-card.style.color = "white";
+.upload-zone{
+  border:2px dashed var(--border);border-radius:var(--r);
+  padding:20px;text-align:center;cursor:pointer;
+  color:var(--muted);font-size:0.8rem;margin-bottom:12px;transition:border-color .18s;
 }
-
-});
-
-// 🔥 ALWAYS UPDATE
-countSpan.innerText = "(" + myCount + "/5)";
-
-});
-onValue(ref(db,"game/prize"), snap=>{
-let val = snap.val() || 0;
-document.getElementById("prizeAmount").innerText = val;
-});
-
-/* GENERATE BOARD */
-function generateBoard(seed){
-
-function seededRandom(s){
-let x = Math.sin(s) * 10000;
-return x - Math.floor(x);
-}
-
-function getNums(min,max,seed){
-let arr = [];
-let s = seed;
-
-while(arr.length < 5){
-let n = Math.floor(seededRandom(s++)*(max-min+1))+min;
-if(!arr.includes(n)) arr.push(n);
-}
-return arr;
-}
-
-// ✅ USE seed correctly
-let B = getNums(1,15,seed+1);
-let I = getNums(16,30,seed+2);
-let N = getNums(31,45,seed+3);
-let G = getNums(46,60,seed+4);
-let O = getNums(61,75,seed+5);
-
-let board = [];
-
-for(let i=0;i<5;i++){
-board.push(B[i],I[i],N[i],G[i],O[i]);
-}
-
-board[12] = "FREE";
-
-return board;
-}
-// helper
-function getNums(min,max){
-let arr = [];
-while(arr.length<5){
-let n = Math.floor(Math.random()*(max-min+1))+min;
-if(!arr.includes(n)) arr.push(n);
-}
-return arr;
-}
-
-let boards = {};
-
-/* CREATE 100 CARDS */
-for(let i=1;i<=100;i++){
-
-boards[i]=generateBoard(i);
-
-let d=document.createElement("div");
-d.className="card";
-d.innerText=i;
-
-d.onclick=()=>{
-document.querySelectorAll(".card").forEach(c=>c.classList.remove("selected"));
-d.classList.add("selected");
-showPreview(boards[i]);
-selectedCard=i;
-};
-
-cardsDiv.appendChild(d);
-}
-
-/* PREVIEW */
-let selectedCard = null;
-
-function showPreview(nums){
-
-previewDiv.innerHTML="";
-previewDiv.className="board";
-
-// 🔥 BINGO HEADER
-let header = ["B","I","N","G","O"];
-
-header.forEach(h=>{
-let d=document.createElement("div");
-d.className="cell";
-d.innerText=h;
-d.style.background="gold";
-d.style.color="black";
-d.style.fontWeight="bold";
-previewDiv.appendChild(d);
-});
-
-// 🔥 NUMBERS
-nums.forEach(n=>{
-let c=document.createElement("div");
-c.className="cell";
-c.innerText=n;
-
-if(n==="FREE") c.classList.add("free");
-
-previewDiv.appendChild(c);
-
-});
-
-}
-
-/* CONFIRM */
-window.confirmCard = async ()=>{
-
-// ❗ card አልተመረጠም
-if(!selectedCard){
-showMsg("👉 card ምረጥ");
-return;
-}
-
-// 🔥 bet
-let betSnap = await get(ref(db,"game/bet"));
-let bet = betSnap.val() || 0;
-
-// 🔥 user balance
-let userRef = ref(db,"users/"+username+"/balance");
-let balSnap = await get(userRef);
-let currentBalance = balSnap.val() || 0;
-
-// ❌ balance check
-if(currentBalance < bet){
-showMsg("❌ ቀሪ ሂሳብ አንስተኛ ነው!");
-return;
-}
-
-// 🔥 all cards
-let snapAll = await get(ref(db,"game/confirmedNumbers"));
-let data = snapAll.val() || {};
-
-let myCards = Object.values(data).filter(v => v === userId);
-
-// ❌ max 5
-if(myCards.length >= 5){
-showMsg("❌ Max 5 cards!");
-return;
-}
-
-// ❌ already taken
-if(data[selectedCard]){
-showMsg("❌ Already taken!");
-return;
-}
-
-// ✅ deduct balance
-await set(userRef, currentBalance - bet);
-let totalRef = ref(db,"game/total");
-
-let totalSnap = await get(totalRef);
-let currentTotal = totalSnap.val() || 0;
-
-await set(totalRef, currentTotal + bet);
-// ✅ save card
-await set(ref(db,"game/confirmedNumbers/"+selectedCard), userId);
-
-showMsg("✅ Confirmed!");
-
-// UI reset (optional)
-document.querySelectorAll(".card").forEach(c=>{
-c.classList.remove("selected");
-});
-
-showPreview(boards[selectedCard]);
-};
-/* BUILD TV */
-function buildTV(){
-
-tvGrid.innerHTML="";
-
-let headers=["B","I","N","G","O"];
-
-headers.forEach(h=>{
-let d=document.createElement("div");
-d.className="tvCell";
-d.innerText=h;
-
-// 🟡 BINGO = yellow
-d.style.background="gold";
-d.style.color="black";
-d.style.fontWeight="bold";
-
-tvGrid.appendChild(d);
-
-});
-
-for(let i=1;i<=15;i++){
-
-let nums=[i,i+15,i+30,i+45,i+60];
-
-nums.forEach(n=>{
-let d=document.createElement("div");
-d.className="tvCell";
-d.innerText=n;
-d.id="num"+n;
-
-// 🟠 numbers = orange
-d.style.background="black";
-d.style.color="white";
-
-tvGrid.appendChild(d);
-});
-
-}
-}
-function speakNumber(num){
-
-let letter="";
-if(num<=15) letter="B";
-else if(num<=30) letter="I";
-else if(num<=45) letter="N";
-else if(num<=60) letter="G";
-else letter="O";
-
-let text = letter + " " + num;
-
-let speech = new SpeechSynthesisUtterance(text);
-speech.lang = "en-US";
-
-speechSynthesis.speak(speech);
-}
-
-let winnerShown = false;
-let paid = false;
-
-/* CALLED NUMBERS */
-onValue(ref(db,"game/calledNumbers"),snap=>{
-
-let data = snap.val();
-if(!data) return;
-
-let values = Object.values(data);
-
-let last = values[values.length - 1];
-
-// 🔊 voice
-if(last && !calledNumbers.includes(last)){
-speakNumber(last);
-}
-
-calledNumbers = values;
-
-// ✅ TV highlight
-values.forEach(n=>{
-let el = document.getElementById("num"+n);
-if(el) el.classList.add("called");
-});
-updateCards();
-updateCards();
-
-
-// 🔥 AUTO TICK (FIXED)
-document.querySelectorAll(".smallCell").forEach(c=>{
-
-let text = c.innerText.trim();
-
-// skip header
-if(["B","I","N","G","O"].includes(text)) return;
-
-// FREE
-if(text === "F"){
-c.style.background = "gold";
-c.style.color = "black";
-return;
-}
-
-let val = Number(text);
-
-if(!val) return; // safety
-
-let wrap = c.closest("[data-mine]");
-let isMine = wrap && wrap.dataset.mine === "yes";
-
-if(values.includes(val)){
-
-if(isMine){
-c.style.background = "#00e676"; // 🟢 yours
-}else{
-c.style.background = "#ff1744"; // 🔴 others
-}
-
-c.style.color="white";
-}
-
-});
-
-});
-// 🏆 PLAYER WINNER LISTENER
-onValue(ref(db,"game/winners"), async (snap)=>{
-
-let data = snap.val();
-if(!data) return;
-
-let winners = Object.values(data || {});
-if(winners.length === 0) return;
-
-let me = winners.find(w => String(w.user) === String(username));
-if(!me) return;
-
-// 🔥 force game screen
-selectScreen.classList.remove("active");
-homeScreen.classList.remove("active");
-accountScreen.classList.remove("active");
-document.getElementById("gameScreen").classList.add("active");
-
-// 🔥 board
-let board = boards[Number(me.cardId)];
-
-let html = `
-🏆 WINNER<br>
-👤 ${me.user}<br>
-🎟 Card ${me.cardId}
-<div style="
-display:grid;
-grid-template-columns:repeat(5,50px);
-gap:6px;
-margin-top:10px;
-">
-`;
-
-board.forEach((n,i)=>{
-
-let win = me.pattern && me.pattern.includes(i);
-
-html += `
-<div style="
-padding:8px;
-border-radius:6px;
-background:${win ? "#00e676" : "#333"};
-color:${win ? "black" : "white"};
-font-weight:bold;
-">
-${n==="FREE"?"F":n}
+.upload-zone:hover{border-color:var(--gold);}
+.modal-btns{display:flex;gap:7px;}
+.btn-send{flex:1;background:var(--green);color:#06080f;padding:11px;border-radius:var(--r);}
+.btn-close-modal{flex:1;background:var(--red);color:#fff;padding:11px;border-radius:var(--r);}
+
+/* ── LOADING ── */
+@keyframes spin{to{transform:rotate(360deg);}}
+
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+<div id="loadingScreen" style="position:fixed;inset:0;z-index:99999;background:#08090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:8px;color:#f5c842;text-shadow:0 0 30px #f5c84266;">BINGO</div>
+  <div style="width:48px;height:48px;border:4px solid #1f2535;border-top-color:#f5c842;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <div style="font-size:0.8rem;color:#4a5a7a;letter-spacing:2px;">Loading...</div>
 </div>
-`;
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
 
+<!-- SELECT SCREEN -->
+<div id="selectScreen" class="screen active">
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div class="logo">BINGO</div>
+    <div id="topCdBadge" style="display:none;background:#001a20;border:1px solid #00e5ff;border-radius:20px;padding:3px 8px;align-items:center;gap:3px;">
+      <span style="font-size:0.65rem;">⏱</span>
+      <span style="color:#00e5ff;font-family:'Bebas Neue',sans-serif;font-size:0.85rem;letter-spacing:1px;" id="topCdVal">--:--</span>
+    </div>
+  </div>
+  <div class="info-badges">
+    <div class="badge">👥<span class="val" id="topPlayers">0</span></div>
+    <div class="badge">🎟<span class="val" id="topCards">0</span></div>
+    <div class="badge">🏆<span class="val" id="topPrize">0</span></div>
+  </div>
+  <button id="liveBtn" onclick="goLive()">🔴 LIVE</button>
+</div>
+
+  <div id="countdownBar">
+    <div>
+      <div class="cd-bar-label">⏱ Game ሲጀምር</div>
+      <div class="cd-bar-val" id="cdBarVal">--:--</div>
+      <div class="cd-bar-sub">Card ምረጥ — game auto ይጀምራል</div>
+    </div>
+    <div class="cd-pulse"></div>
+  </div>
+
+  <div class="bet-box">
+    <div>
+      <div class="bet-label">Bet</div>
+      <div class="bet-val"><span id="betShow">0</span> ብር</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="bet-label">Prize Pool</div>
+      <div class="prize-val"><span id="prizeShow">0</span> ብር</div>
+    </div>
+  </div>
+
+  <!-- ✅ CARD PREVIEW PANEL — NEW -->
+  <div id="cardPreviewPanel">
+    <div class="preview-header">
+      <div class="preview-title" id="previewTitle">CARD #0</div>
+      <button class="preview-close" onclick="closePreview()">✕ ዝጋ</button>
+    </div>
+    <div class="preview-grid" id="previewGrid"></div>
+  </div>
+
+  <div class="legend-row">
+    <div class="legend-item"><span class="legend-dot taken-dot"></span>ተይዟል</div>
+    <div class="legend-item"><span class="legend-dot mine-dot"></span>የኔ</div>
+    <div class="legend-item"><span class="legend-dot free-dot"></span>ነጻ</div>
+    <div class="count-row">
+      ተይዟል: <b style="color:var(--red)" id="takenCount">0</b>
+      &nbsp;ነጻ: <b style="color:var(--green)" id="freeCount">100</b>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD PANEL -->
+  <div id="leaderboardPanel">
+    <div class="lb-header">
+      <div class="lb-title">🏆 LEADERBOARD</div>
+      <div class="lb-called-badge">📢 Called: <span class="lbc-num" id="lbCalledCount">0</span></div>
+    </div>
+    <div id="lbList"></div>
+  </div>
+
+  <div class="cards-section" id="cardSelectSection">
+    <h3>Card ምረጥ (1–100)</h3>
+    <div class="cards-grid" id="cardsGrid"></div>
+  </div>
+
+  <div id="bottomBar">
+    <button id="confirmBtn" onclick="confirmCard()">
+      ✔ Confirm Card
+      <span class="sel-badge" id="selectedCountBadge" style="display:none"></span>
+    </button>
+    <button id="accountBtn" onclick="showScreen('accountScreen')">
+      <span class="acc-icon">👤</span>
+      <span class="acc-label">Account</span>
+    </button>
+  </div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="gameScreen" class="screen">
+  <div class="topbar">
+    <div class="logo">BINGO</div>
+    <div class="info-badges">
+      <div class="badge">💸<span class="val" id="betGame">0</span></div>
+      <div class="badge">🏆<span class="val" id="prizeGame">0</span></div>
+    </div>
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);padding:6px 12px;font-size:0.75rem;color:var(--muted);" onclick="showScreen('selectScreen')">Cards</button>
+  </div>
+
+  <!-- Last Called - full width -->
+  <div class="last-called-bar" style="flex-shrink:0;">
+    <div>
+      <div class="lc-label">Last Called</div>
+      <div class="lc-num" id="lcNum">—</div>
+    </div>
+    <div class="mini-balls" id="miniBalls"></div>
+  </div>
+
+<!-- Side by side -->
+  <div style="display:flex;height:calc(100vh - 170px);overflow:hidden;">
+
+    <!-- LEFT: TV + MY CARD -->
+    <div style="width:60%;padding:4px 4px 4px 8px;display:flex;flex-direction:column;overflow:hidden;">
+      <!-- TV -->
+      <div class="tv-wrap" style="width:100%;margin:0;padding:4px;flex-shrink:0;">
+        <div class="tv-grid" id="tvGrid"></div>
+      </div>
+      <!-- MY CARD -->
+      <div style="margin-top:6px;overflow-y:auto;flex:1;padding-bottom:80px;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:0.7rem;letter-spacing:2px;color:var(--green);padding:2px 0 4px;">✅ MY CARD</div>
+        <div id="myGameCard"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Leaderboard — 4 rows visible then scroll -->
+    <div style="width:40%;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:0.7rem;letter-spacing:2px;color:var(--gold);padding:6px 6px 4px;flex-shrink:0;">🏆 LEAD</div>
+      <div id="gameLbList" style="overflow-y:scroll;flex:1;padding:0 4px 80px;max-height:100%;"></div>
+    </div>
+
+  </div>
+
+  <button class="btn back-btn" onclick="showScreen('selectScreen')">⬅ Back</button>
+</div>
+
+<!-- ACCOUNT SCREEN -->
+<div id="accountScreen" class="screen">
+  <div class="acc-header">
+    <button class="btn acc-header-back" onclick="showScreen('selectScreen')">⬅ Back</button>
+    <span class="acc-header-title">ACCOUNT</span>
+  </div>
+  <div class="acc-profile">
+    <div class="acc-profile-row">
+      <div class="acc-avatar">👤</div>
+      <div class="acc-user-info">
+        <div class="acc-uid-label">User ID</div>
+        <div class="acc-uid-val" id="userIdShow">—</div>
+      </div>
+    </div>
+    <div class="acc-bal-label">Balance</div>
+    <div class="acc-balance-row">
+      <div class="acc-bal-val"><span id="balanceVal">0</span></div>
+      <div class="acc-bal-unit">ብር</div>
+    </div>
+  </div>
+  <div class="dep-section">
+    <div class="dep-section-title">💳 Deposit</div>
+    <div class="deposit-grid" id="depositGrid"></div>
+  </div>
+  <div class="acc-my-cards-btn" onclick="showScreen('myCardsScreen')">
+    <div class="acc-my-cards-left">
+      <div class="acc-my-cards-icon">🎟</div>
+      <div>
+        <div class="acc-my-cards-text">My Cards</div>
+        <div class="acc-my-cards-sub">View confirmed cards</div>
+      </div>
+    </div>
+    <div class="acc-my-cards-arrow">›</div>
+  </div>
+  <div class="acc-my-cards-btn" onclick="showScreen('winHistoryScreen');loadWinHistory();" style="margin-top:10px;border-color:rgba(245,200,66,.2);">
+  <div class="acc-my-cards-left">
+    <div class="acc-my-cards-icon">🏆</div>
+    <div>
+      <div class="acc-my-cards-text" style="color:var(--gold);">የኔ አሸናፊ ታሪክ</div>
+      <div class="acc-my-cards-sub">ስንት ጊዜ አሸነፍኩ — ስንት ብር</div>
+    </div>
+  </div>
+  <div class="acc-my-cards-arrow">›</div>
+</div>
+  <div class="acc-my-cards-btn" onclick="showScreen('historyScreen');loadHistory();" style="margin-top:10px;border-color:rgba(170,68,255,.2);">
+  <div class="acc-my-cards-left">
+    <div class="acc-my-cards-icon">📜</div>
+    <div>
+      <div class="acc-my-cards-text" style="color:var(--purple);">Round History</div>
+      <div class="acc-my-cards-sub">ያለፉ rounds አሸናፊዎች</div>
+    </div>
+  </div>
+  <div class="acc-my-cards-arrow">›</div>
+</div>
+</div>
+
+<!-- WIN HISTORY SCREEN -->
+<div id="winHistoryScreen" class="screen">
+  <div style="padding:14px;display:flex;align-items:center;gap:10px;">
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);padding:8px 14px;font-size:0.8rem;color:var(--muted);" onclick="showScreen('accountScreen')">⬅ Back</button>
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:3px;color:var(--gold);">የኔ አሸናፊ ታሪክ</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 14px 14px;">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);" id="whTotalWins">0</div>
+      <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;">አሸናፊ ጊዜ</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--green);" id="whTotalPrize">0</div>
+      <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;">ብር ድምር</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--cyan);" id="whBestWin">0</div>
+      <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;">ምርጥ አሸናፊ</div>
+    </div>
+  </div>
+  <div style="padding:0 14px 80px;" id="winHistoryList"></div>
+</div>
+
+<!-- ROUND HISTORY SCREEN -->
+<div id="historyScreen" class="screen">
+  <div style="padding:14px;display:flex;align-items:center;gap:10px;">
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);padding:8px 14px;font-size:0.8rem;color:var(--muted);" onclick="showScreen('accountScreen')">⬅ Back</button>
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:3px;color:var(--gold);">ROUND HISTORY</span>
+  </div>
+  <div style="padding:0 14px 80px;" id="historyList"></div>
+</div>
+
+<!-- MY CARDS SCREEN -->
+<div id="myCardsScreen" class="screen">
+  <div style="padding:14px;display:flex;align-items:center;gap:10px;">
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);padding:8px 14px;font-size:0.8rem;color:var(--muted);" onclick="showScreen('accountScreen')">⬅ Back</button>
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:3px;color:var(--gold);">MY CARDS</span>
+  </div>
+  <div style="padding:0 14px;" id="myCardsList"></div>
+</div>
+
+<!-- WINNER OVERLAY -->
+<div id="winnerOverlay">
+  <div class="confetti-wrap" id="confettiWrap"></div>
+  <div class="winner-popup">
+    <span class="trophy">🏆</span>
+    <h1>BINGO!</h1>
+    <div class="winner-name" id="winnerNameDisplay">—</div>
+    <div class="winner-card-info" id="winnerCardDisplay">—</div>
+    <div class="prize-display" id="winnerPrizeDisplay">0</div>
+<div class="prize-label">ብር ተሸለሙ!</div>
+<div id="winnerBoardWrap" style="margin:10px 0 0;overflow-x:auto;"></div>
+<div class="countdown-bar"><div class="fill" id="cdFill"></div></div>
+    <div class="close-hint">5 ሰኮንድ ቆይቶ ይዘጋል...</div>
+  </div>
+</div>
+
+<!-- PAYMENT MODAL -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal-box">
+    <div class="modal-title">💳 DEPOSIT</div>
+    <p style="text-align:center;color:var(--muted);font-size:0.85rem;margin-bottom:14px;">
+      Amount: <b style="color:var(--gold)" id="payAmountText">0</b> ብር
+    </p>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      📤 Upload Payment Screenshot
+      <input type="file" id="fileInput" accept="image/*" style="display:none">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-send" onclick="sendPayment()">Send</button>
+      <button class="btn btn-close-modal" onclick="closePayModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, get, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+const app = initializeApp({
+  apiKey: "AIzaSyCHXEQ8nx1SYeQm1eptTf2xU_WXKG4lowM",
+  authDomain: "house-rent-app-3674a.firebaseapp.com",
+  databaseURL: "https://house-rent-app-3674a-default-rtdb.firebaseio.com",
+  projectId: "house-rent-app-3674a",
+  storageBucket: "house-rent-app-3674a.firebasestorage.app",
+  messagingSenderId: "732772696627",
+  appId: "1:732772696627:web:694a36c4729b57209ed946"
+});
+const db = getDatabase(app);
+const storage = getStorage(app);
+// ── NETWORK STATUS ──
+onValue(ref(db,'.info/connected'), s => {
+  const connected = s.val();
+  let bar = document.getElementById('networkBar');
+
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'networkBar';
+    bar.style.cssText = `
+      position:fixed;top:0;left:0;right:0;z-index:9999;
+      padding:8px 16px;text-align:center;
+      font-size:0.82rem;font-weight:700;
+      transition:all .3s;
+    `;
+    document.body.appendChild(bar);
+  }
+
+  if(connected){
+    bar.textContent = '✅ ኢንተርኔት ተገናኝቷል';
+    bar.style.background = '#00e676';
+    bar.style.color = '#08090f';
+    setTimeout(()=>{ bar.style.display='none'; }, 2500);
+  } else {
+    bar.style.display = 'block';
+    bar.textContent = '❌ ኢንተርኔት ተቋረጠ — እንደገና እየሞከረ ነው...';
+    bar.style.background = '#ff3d57';
+    bar.style.color = 'white';
+  }
+});
+// ── USER ──
+const tg = window.Telegram?.WebApp;
+let userId = '';
+if(tg?.initDataUnsafe?.user){
+  userId = String(tg.initDataUnsafe.user.id);
+} else {
+  userId = localStorage.getItem('bingo_uid') || ('guest_'+Date.now());
+  localStorage.setItem('bingo_uid', userId);
+}
+document.getElementById('userIdShow').textContent = userId;
+
+// ── STATE ──
+let confirmedCards = [];
+let allConfirmedData = {};
+let displayNames = {};
+let calledNumbers = [];
+let selectedCard = null;
+let balance = 0;
+let payAmount = 0;
+let gameStarted = false;
+let cdPlayerTimer = null;
+let winnerShownTime = 0;
+let ttsQueue = [];
+let ttsBusy = false;
+let ttsReady = false;
+
+async function initApp() {
+  try {
+    const confSnap = await get(ref(db,'game/confirmedNumbers'));
+    const confData = confSnap.val() || {};
+    allConfirmedData = confData;
+    confirmedCards = Object.keys(confData)
+      .filter(k => String(confData[k]) === String(userId))
+      .map(Number);
+
+    const balSnap = await get(ref(db,'users/'+userId+'/balance'));
+    balance = balSnap.val() || 0;
+    document.getElementById('balanceVal').textContent = balance;
+
+    const statusSnap = await get(ref(db,'game/status'));
+    if(statusSnap.val()?.started){
+      gameStarted = true;
+      toggleGameUI(true);
+    }
+
+    const betSnap = await get(ref(db,'game/bet'));
+    document.getElementById('betShow').textContent = betSnap.val() || 0;
+    document.getElementById('betGame').textContent = betSnap.val() || 0;
+
+  } catch(e) {
+    console.error('Init error:', e);
+  } finally {
+    document.getElementById('loadingScreen').style.display = 'none';
+  }
+}
+
+initApp();
+
+// ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// ── ENGLISH TTS — Web Speech API (100% works on Telegram)
+// Format: "B 5", "N 32", "BINGO! Winner found!" etc.
+// Web Speech API English voice is built-in on ALL Android/iOS
+// No CORS, no external API, no setup needed.
+// ════════════════════════════════════════════════════════
+
+// Pre-load voices (some browsers load async)
+function initVoices(){
+  if(window.speechSynthesis){
+    window.speechSynthesis.getVoices();
+    ttsReady = true;
+  }
+}
+initVoices();
+if(window.speechSynthesis){
+  window.speechSynthesis.onvoiceschanged = initVoices;
+}
+// ── SOUND EFFECTS ──
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+
+function getAudioCtx(){
+  if(!audioCtx) audioCtx = new AudioCtx();
+  return audioCtx;
+}
+
+// ── Ding ድምፅ — number ሲጠራ ──
+function playDing(){
+  try{
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.4, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch(e){}
+}
+
+// ── Click ድምፅ — card confirm ──
+function playClick(){
+  try{
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(600, ctx.currentTime);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.15);
+  } catch(e){}
+}
+
+// ── Fanfare ድምፅ — አሸናፊ ሲኖር ──
+function playFanfare(){
+  try{
+    const ctx = getAudioCtx();
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      const start = ctx.currentTime + i * 0.18;
+      gain.gain.setValueAtTime(0.35, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+      osc.start(start);
+      osc.stop(start + 0.35);
+    });
+  } catch(e){}
+}
+// Unlock speech on first user touch (iOS / Telegram requirement)
+function unlockAudio(){
+  try{
+    // Speak empty string to warm up the engine
+    if(window.speechSynthesis){
+      const u = new SpeechSynthesisUtterance('');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    }
+  } catch(e){}
+}
+document.body.addEventListener('touchstart', unlockAudio, {once:true, passive:true});
+document.body.addEventListener('click', unlockAudio, {once:true});
+
+// ── Core speak function ──
+function speakText(text){
+  return new Promise((resolve)=>{
+    try{
+      const synth = window.speechSynthesis;
+      if(!synth){ resolve(); return; }
+
+      // Cancel any ongoing speech
+      synth.cancel();
+
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.lang = 'en-US';
+      utt.rate = 0.88;   // slightly slow — clear for bingo
+      utt.pitch = 1.0;
+      utt.volume = 1.0;
+
+      // Pick best English voice available
+      const voices = synth.getVoices();
+      const preferred = voices.find(v =>
+        v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Daniel'))
+      ) || voices.find(v => v.lang.startsWith('en'));
+      if(preferred) utt.voice = preferred;
+
+      utt.onend = resolve;
+      utt.onerror = resolve;
+
+      // Telegram WebView sometimes needs a tiny delay
+      setTimeout(()=> synth.speak(utt), 80);
+    } catch(e){ resolve(); }
+  });
+}
+
+function enqueueTTS(text){
+  ttsQueue.push(text);
+  if(!ttsBusy) processTTSQueue();
+}
+
+async function processTTSQueue(){
+  if(ttsQueue.length===0){ ttsBusy=false; return; }
+  ttsBusy=true;
+  const text = ttsQueue.shift();
+  await speakText(text);
+  processTTSQueue();
+}
+
+// ── Number announcement: "B — 5", "N — 32" etc. ──
+function speakNumber(n){
+  const letter = getLetter(n);
+  // Spell out letter then number clearly
+  // e.g. "B. 5", "I. 16", "N. 32"
+  enqueueTTS(letter + '. ' + n);
+}
+
+// ── BOARDS ──
+const boards = {};
+function generateBoard(seed){
+  function sr(s){let x=Math.sin(s)*10000;return x-Math.floor(x);}
+  function getNums(min,max,s){
+    let arr=[],k=s;
+    while(arr.length<5){let n=Math.floor(sr(k++)*(max-min+1))+min;if(!arr.includes(n))arr.push(n);}
+    return arr;
+  }
+  let B=getNums(1,15,seed+1),I=getNums(16,30,seed+2),N=getNums(31,45,seed+3),G=getNums(46,60,seed+4),O=getNums(61,75,seed+5);
+  let b=[];for(let i=0;i<5;i++)b.push(B[i],I[i],N[i],G[i],O[i]);
+  b[12]='FREE';return b;
+}
+for(let i=1;i<=100;i++) boards[i]=generateBoard(i);
+
+function getLetter(n){
+  if(n<=15)return'B';if(n<=30)return'I';if(n<=45)return'N';if(n<=60)return'G';return'O';
+}
+
+// ── TOAST ──
+window.showToast=(msg)=>{
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.style.display='block';
+  setTimeout(()=>t.style.display='none',2200);
+};
+
+// ── SCREENS ──
+window.showScreen=(id)=>{
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='myCardsScreen') renderMyCards();
+  if(id==='accountScreen') document.getElementById('balanceVal').textContent=balance;
+};
+
+// ════════════════════════════════════════════════════════
+// ── CARD PREVIEW — ✅ NEW
+// Card ስትምረጥ BINGO board preview ታሳያለህ
+// ════════════════════════════════════════════════════════
+function showCardPreview(cardId){
+  const panel = document.getElementById('cardPreviewPanel');
+  const grid  = document.getElementById('previewGrid');
+  const title = document.getElementById('previewTitle');
+
+  title.textContent = 'CARD #' + cardId;
+  grid.innerHTML = '';
+
+  // Header row: B I N G O
+  ['B','I','N','G','O'].forEach(h=>{
+    const d = document.createElement('div');
+    d.className = 'preview-cell ph';
+    d.textContent = h;
+    grid.appendChild(d);
+  });
+
+  // Board cells
+  boards[cardId].forEach(n=>{
+    const d = document.createElement('div');
+    if(n === 'FREE'){
+      d.className = 'preview-cell pf';
+      d.textContent = '★';
+    } else {
+      d.className = 'preview-cell';
+      d.textContent = n;
+      // Highlight already-called numbers during game
+      if(calledNumbers.includes(n)){
+        d.style.background = 'var(--green)';
+        d.style.color = '#08090f';
+      }
+    }
+    grid.appendChild(d);
+  });
+
+  panel.classList.add('show');
+  // Scroll panel into view smoothly
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+window.closePreview = ()=>{
+  document.getElementById('cardPreviewPanel').classList.remove('show');
+};
+
+// ── BUILD CARDS GRID ──
+const grid = document.getElementById('cardsGrid');
+for(let i=1;i<=100;i++){
+  const d=document.createElement('div');
+  d.className='card-num';d.id='cn'+i;d.textContent=i;
+  d.onclick=()=>{
+    unlockAudio();
+
+    // 🔒 Game ከጀመረ block ያድርግ
+    if(gameStarted){
+      showToast('🔒 Game ጀምሯል! Card መያዝ አይቻልም');
+      return;
+    }
+
+    if(d.classList.contains('taken')){
+      showToast('❌ Card #'+i+' ተይዟል! ሌላ ምረጥ');
+      return;
+    }
+    if(d.classList.contains('mine')){
+      showToast('✅ Card #'+i+' የኔ card ነው');
+      showCardPreview(i);
+      return;
+    }
+
+    // Deselect previous
+    document.querySelectorAll('.card-num').forEach(c=>{
+      if(!c.classList.contains('mine') && !c.classList.contains('taken'))
+        c.classList.remove('selected');
+    });
+
+    selectedCard = i;
+    d.classList.add('selected');
+
+    const badge = document.getElementById('selectedCountBadge');
+    badge.textContent = '#'+i;
+    badge.style.display = 'inline-block';
+
+    // ✅ Show preview
+    showCardPreview(i);
+  };
+  grid.appendChild(d);
+}
+
+// ── UPDATE CARD GRID ──
+function updateCardGrid(data){
+  let takenCount = 0;
+  for(let i=1;i<=100;i++){
+    const el = document.getElementById('cn'+i);
+    if(!el) continue;
+    const owner = data[String(i)];
+    el.className = 'card-num';
+    if(owner !== undefined && owner !== null){
+      takenCount++;
+      if(String(owner)===String(userId)){
+        el.classList.add('mine');
+      } else {
+        el.classList.add('taken');
+      }
+    } else {
+      if(selectedCard===i) el.classList.add('selected');
+    }
+  }
+  document.getElementById('takenCount').textContent=takenCount;
+  document.getElementById('freeCount').textContent=100-takenCount;
+}
+
+// ── CONFIRM ──
+window.confirmCard = async () => {
+  if(!selectedCard){ showToast('👉 Card ምረጥ!'); return; }
+  if(gameStarted){ showToast('🔒 Game ጀምሯል!'); return; }
+
+  try {
+    const res = await fetch('https://admin-panel-production-b31a.up.railway.app/confirm-card', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ userId, cardId: selectedCard })
+    });
+    const data = await res.json();
+
+    if(data.ok){
+      playClick();
+      showToast('✅ Card #'+selectedCard+' confirmed!');
+      selectedCard = null;
+      document.getElementById('selectedCountBadge').style.display='none';
+      closePreview();
+    } else {
+      showToast(data.msg || '❌ Error!');
+    }
+} catch(e) {
+    showToast('❌ ' + (e.message || 'Connection failed'));
+  }
+};
+
+// ── COUNTDOWN ──
+onValue(ref(db,'game/countdown'),s=>{
+  const val=s.val();
+  clearInterval(cdPlayerTimer);cdPlayerTimer=null;
+  const bar=document.getElementById('countdownBar');
+  const topBadge=document.getElementById('topCdBadge');
+  const topVal=document.getElementById('topCdVal');
+  const cdBarVal=document.getElementById('cdBarVal');
+  
+  if(val&&val.active&&val.startAt){
+    // ✅ Countdown bar ታሳይ
+    bar.classList.add('active');
+    topBadge.style.display='inline-flex';
+    
+    function tick(){
+      const remain=Math.max(0,Math.floor((val.startAt-Date.now())/1000));
+      const m=Math.floor(remain/60),sec=remain%60;
+      const timeStr=String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+      topVal.textContent=timeStr;
+      cdBarVal.textContent=timeStr;
+      if(remain<=0){
+        clearInterval(cdPlayerTimer);cdPlayerTimer=null;
+        topBadge.style.display='none';
+        bar.classList.remove('active');
+      }
+    }
+    tick();cdPlayerTimer=setInterval(tick,1000);
+  } else {
+    topBadge.style.display='none';
+    bar.classList.remove('active');
+  }
 });
 
-html += `</div>`;
+// ── REALTIME ──
+onValue(ref(db,'game/bet'),s=>{
+  const v=s.val()||0;
+  document.getElementById('betShow').textContent=v;
+  document.getElementById('betGame').textContent=v;
+});
+onValue(ref(db,'game/prize'),s=>{
+  const v=s.val()||0;
+  document.getElementById('prizeShow').textContent=v;
+  document.getElementById('prizeGame').textContent=v;
+  document.getElementById('topPrize').textContent=v;
+});
+onValue(ref(db,'users/'+userId+'/balance'),s=>{
+  balance=s.val()||0;
+  document.getElementById('balanceVal').textContent=balance;
+});
 
-let box = document.getElementById("winnerBox");
-let text = document.getElementById("winnerText");
+// ── CONFIRMED NUMBERS LISTENER ──
+// Track previous state to detect NEW additions
+let prevConfirmedKeys = new Set();
 
-text.innerHTML = html;
+onValue(ref(db,'game/confirmedNumbers'),async s=>{
+  const data=s.val()||{};
+  allConfirmedData=data;
+  confirmedCards=Object.keys(data).filter(k=>String(data[k])===String(userId)).map(Number);
 
-box.style.display = "flex";
+  // Display names cache update
+  for(const uid of Object.values(data)){
+    if(!displayNames[uid]){
+      const snap = await get(ref(db,'users/'+uid+'/display'));
+      displayNames[uid] = snap.val() || String(uid);
+    }
+  }
 
-setTimeout(()=>{
-box.style.display = "none";
+  const total=Object.keys(data).length;
+  const allUnique=new Set(Object.values(data)).size;
+  document.getElementById('topCards').textContent=total;
+  document.getElementById('topPlayers').textContent=allUnique;
+
+  // Find newly added cards since last snapshot
+  const newKeys = new Set(Object.keys(data));
+  const addedCards = [...newKeys].filter(k => !prevConfirmedKeys.has(k));
+
+  // Update grid — but flash new ones
+  let takenCount = 0;
+  for(let i=1;i<=100;i++){
+    const el = document.getElementById('cn'+i);
+    if(!el) continue;
+    const owner = data[String(i)];
+    const isNew = addedCards.includes(String(i));
+
+    el.className = 'card-num';
+
+    if(owner !== undefined && owner !== null){
+      takenCount++;
+      if(String(owner)===String(userId)){
+        el.classList.add(isNew ? 'just-mine' : 'mine');
+        if(isNew){
+          setTimeout(()=>{
+            el.classList.remove('just-mine');
+            el.classList.add('mine');
+          }, 650);
+        }
+      } else {
+        el.classList.add(isNew ? 'just-taken' : 'taken');
+        if(isNew){
+          setTimeout(()=>{
+            el.classList.remove('just-taken');
+            el.classList.add('taken');
+          }, 650);
+        }
+      }
+    } else {
+      if(selectedCard===i) el.classList.add('selected');
+    }
+  }
+  document.getElementById('takenCount').textContent=takenCount;
+  document.getElementById('freeCount').textContent=100-takenCount;
+
+  prevConfirmedKeys = newKeys;
+
+  if(gameStarted){ renderGameCards(); renderLeaderboard(); }
+});
+
+// ── STATUS ──
+onValue(ref(db,'game/status'),async s=>{
+  const data=s.val();
+  const liveBtn=document.getElementById('liveBtn');
+  if(!data)return;
+  if(data.started){
+    const wasAlreadyStarted=gameStarted;
+    gameStarted=true;
+    toggleGameUI(true);
+    liveBtn.style.display='inline-flex';
+    document.getElementById('countdownBar').classList.remove('active');
+    clearInterval(cdPlayerTimer);cdPlayerTimer=null;
+    const snap=await get(ref(db,'game/calledNumbers'));
+    calledNumbers=Object.values(snap.val()||{});
+    buildTV();renderGameCards();
+    calledNumbers.forEach(n=>{const el=document.getElementById('num'+n);if(el)el.classList.add('called');});
+    updateGameCards();
+    const currentScreen=document.querySelector('.screen.active')?.id;
+if(wasAlreadyStarted && currentScreen==='gameScreen'){
+  showScreen('gameScreen');
+} else {
+  showScreen('selectScreen');
+}
+  } else {
+    gameStarted=false;
+    toggleGameUI(false);
+    liveBtn.style.display='none';
+    showScreen('selectScreen');
+    confirmedCards=[];allConfirmedData={};selectedCard=null;
+    document.getElementById('selectedCountBadge').style.display='none';
+    calledNumbers=[];
+    closePreview();
+    for(let i=1;i<=100;i++){
+      const el=document.getElementById('cn'+i);
+      if(el) el.className='card-num';
+    }
+    document.getElementById('takenCount').textContent='0';
+    document.getElementById('freeCount').textContent='100';
+  }
+});
+
+// ── CALLED NUMBERS ──
+onValue(ref(db,'game/calledNumbers'),s=>{
+  const data=s.val();if(!data)return;
+  const vals=Object.values(data);
+  const last=vals[vals.length-1];
+
+  if(last&&!calledNumbers.includes(last)){
+    playDing();
+    speakNumber(last);
+  }
+
+  calledNumbers=vals;
+  vals.forEach(n=>{const el=document.getElementById('num'+n);if(el)el.classList.add('called');});
+
+  if(last){
+    const l=getLetter(last);
+    document.getElementById('lcNum').innerHTML=`<span class="lc-letter">${l}</span>${last}`;
+  }
+
+  const mb=document.getElementById('miniBalls');mb.innerHTML='';
+  [...vals].reverse().slice(0,10).forEach(n=>{
+    const l=getLetter(n);
+    const d=document.createElement('div');d.className=`mball b${l}`;d.textContent=n;mb.appendChild(d);
+  });
+
+  updateGameCards();
+  if(gameStarted) renderLeaderboard();
+});
+
+// ── ANNOUNCEMENT ──
+onValue(ref(db,'game/announcement'),async s=>{
+  const data=s.val();
+  if(!data||data.type!=='winner')return;
+  if(data.time===winnerShownTime)return;
+  winnerShownTime=data.time;
+
+  const winners=data.winners||[];
+  const share=data.share||0;
+
+  // ── ብዙ አሸናፊዎች support ──
+  if(winners.length === 1){
+    const w = winners[0];
+    document.getElementById('winnerNameDisplay').textContent = '🏆 ' + (w.displayName || w.user);
+    document.getElementById('winnerCardDisplay').textContent = 'Card #' + w.cardId;
+    document.getElementById('winnerPrizeDisplay').textContent = share > 0 ? share : data.prize || 0;
+  } else {
+    const namesList = winners.map((w, i) =>
+      `${i+1}. ${w.displayName || w.user} — Card #${w.cardId}`
+    ).join('\n');
+    document.getElementById('winnerNameDisplay').textContent = '🏆 ' + winners.length + ' አሸናፊዎች!';
+    document.getElementById('winnerCardDisplay').textContent = namesList;
+    document.getElementById('winnerPrizeDisplay').textContent = share > 0 ? share : data.prize || 0;
+  }
+playFanfare();
+spawnConfetti();
+document.getElementById('winnerOverlay').classList.add('show');
+
+// ✅ Winner board render
+const myWin = winners.find(w=>String(w.user)===String(userId));
+const showCard = myWin || winners[0];
+if(showCard) renderWinnerBoard(Number(showCard.cardId), calledNumbers);
+
+  const fill=document.getElementById('cdFill');
+  fill.style.animation='none';
+  fill.offsetHeight;
+  fill.style.animation='cdFill 5s linear forwards';
+  
+  if(myWin){
+    enqueueTTS('Congratulations! You won! Bingo!');
+  } else {
+    enqueueTTS('Bingo! We have a winner!');
+  }
+
+  setTimeout(()=>{
+  document.getElementById('winnerOverlay').classList.remove('show');
+  clearConfetti();
+  document.getElementById('winnerBoardWrap').innerHTML='';
 },5000);
 
+  if(myWin){
+    setTimeout(()=>{showToast('🎉 '+(share>0?share:data.prize||0)+' ብር balance ላይ ታከለ!');},1000);
+  }
 });
-
-let liveTotal = 0;
-let livePercent = 80;
-
-// 🔥 total live
-onValue(ref(db,"game/total"), snap=>{
-liveTotal = snap.val() || 0;
-updatePrize();
+// ── RESET ──
+onValue(ref(db,'game/reset'),s=>{
+  if(!s.val())return;
+  calledNumbers=[];confirmedCards=[];allConfirmedData={};selectedCard=null;winnerShownTime=0;
+  ttsQueue=[];ttsBusy=false;
+  document.getElementById('lcNum').textContent='—';
+  document.getElementById('miniBalls').innerHTML='';
+  document.getElementById('tvGrid').innerHTML='';
+  document.getElementById('gameCards').innerHTML='';
+  document.getElementById('winnerOverlay').classList.remove('show');
+  document.getElementById('countdownBar').classList.remove('active');
+  document.getElementById('selectedCountBadge').style.display='none';
+  closePreview();
+  clearInterval(cdPlayerTimer);cdPlayerTimer=null;
+  for(let i=1;i<=100;i++){
+    const el=document.getElementById('cn'+i);
+    if(el) el.className='card-num';
+  }
+  document.getElementById('takenCount').textContent='0';
+  document.getElementById('freeCount').textContent='100';
+  toggleGameUI(false);
+  showScreen('selectScreen');
 });
-
-// 🔥 percent live
-onValue(ref(db,"game/percent"), snap=>{
-livePercent = snap.val() || 80;
-updatePrize();
-});
-
-// 🔥 calculate prize
-function updatePrize(){
-
-let prize = liveTotal * (livePercent / 100);
-
-
-document.getElementById("prizeAmount").innerText = prize;
-}
-/* SHOW GAME CARDS */
-async function showGameCards(){
-
-let box=document.getElementById("gameCards");
-box.innerHTML="";
-
-let snap=await get(ref(db,"game/confirmedNumbers"));
-let data=snap.val()||{};
-
-let allCards=Object.keys(data);
-
-/* your cards first */
-allCards.sort((a,b)=>{
-if(data[a]===userId) return -1;
-if(data[b]===userId) return 1;
-return 0;
-});
-
-allCards.forEach(id=>{
-
-id = Number(id);
-
-let wrap = document.createElement("div");
-
-// ✅ IMPORTANT
-if(data[id] === userId){
-wrap.dataset.mine = "yes";
-}else{
-wrap.dataset.mine = "no";
+// ── WINNER BOARD ──
+function getWinningCells(cardId, called){
+  const b = boards[cardId];
+  const lines = [];
+  for(let r=0;r<5;r++) lines.push([r*5,r*5+1,r*5+2,r*5+3,r*5+4]);
+  for(let c=0;c<5;c++) lines.push([c,c+5,c+10,c+15,c+20]);
+  lines.push([0,6,12,18,24]);
+  lines.push([4,8,12,16,20]);
+  const winCells = new Set();
+  lines.forEach(line=>{
+    const wins = line.every(i=>{
+      const n = b[i];
+      return n==='FREE' || called.includes(n);
+    });
+    if(wins) line.forEach(i=>winCells.add(i));
+  });
+  return winCells;
 }
 
-let title = document.createElement("div");
-title.innerText = "Card " + id;
-title.style.textAlign = "center";
+function renderWinnerBoard(cardId, called){
+  const wrap = document.getElementById('winnerBoardWrap');
+  if(!wrap || !boards[cardId]) return;
+  const board = boards[cardId];
+  const winCells = getWinningCells(cardId, called);
+  wrap.innerHTML = `
+    <div style="font-size:0.58rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;text-align:center;">🎴 WINNING CARD #${cardId}</div>
+    <div class="wb-grid" id="wbGrid"></div>
+  `;
+  const g = wrap.querySelector('#wbGrid');
+  ['B','I','N','G','O'].forEach(h=>{
+    const d=document.createElement('div');
+    d.className='wb-cell wh';d.textContent=h;g.appendChild(d);
+  });
+  board.forEach((n,i)=>{
+    const d=document.createElement('div');
+    if(n==='FREE'){
+      d.className='wb-cell free'+(winCells.has(i)?' win-line':'');
+      d.textContent='★';
+    } else {
+      const isWin=winCells.has(i);
+      const isHit=called.includes(n);
+      d.className='wb-cell'+(isWin?' win-line':isHit?' hit':'');
+      d.textContent=n;
+    }
+    g.appendChild(d);
+  });
+}
+// ── CONFETTI ──
+function spawnConfetti(){
+  const wrap=document.getElementById('confettiWrap');wrap.innerHTML='';
+  const colors=['#f5c842','#00e676','#ff3d57','#2979ff','#aa44ff','#00e5ff','#ffffff'];
+  for(let i=0;i<60;i++){
+    const d=document.createElement('div');d.className='confetti-dot';
+    d.style.cssText=`left:${Math.random()*100}%;background:${colors[Math.floor(Math.random()*colors.length)]};width:${6+Math.random()*10}px;height:${6+Math.random()*10}px;border-radius:${Math.random()>.5?'50%':'2px'};animation-duration:${2+Math.random()*3}s;animation-delay:${Math.random()*2}s;`;
+    wrap.appendChild(d);
+  }
+}
+function clearConfetti(){ document.getElementById('confettiWrap').innerHTML=''; }
 
-if(data[id]===userId){
-title.style.color="#00e676";
-}else{
-title.style.color="#ff1744";
+// ── TV ──
+function buildTV(){
+  const tg2=document.getElementById('tvGrid');tg2.innerHTML='';
+  ['B','I','N','G','O'].forEach(h=>{
+    const d=document.createElement('div');d.className='tv-cell header';d.textContent=h;tg2.appendChild(d);
+  });
+  for(let row=1;row<=15;row++){
+    [row,row+15,row+30,row+45,row+60].forEach(n=>{
+      const d=document.createElement('div');
+      d.className='tv-cell';d.id='num'+n;d.textContent=n;
+      if(calledNumbers.includes(n))d.classList.add('called');
+      tg2.appendChild(d);
+    });
+  }
 }
 
-let board=document.createElement("div");
-board.className="smallBoard";
-// 🔥 BINGO HEADER
-let header = ["B","I","N","G","O"];
-
-header.forEach(h=>{
-let d=document.createElement("div");
-d.className="smallCell";
-d.innerText=h;
-d.style.background="#00e5ff";
-d.style.color="black";
-d.style.fontWeight="bold";
-board.appendChild(d);
-});
-boards[id].forEach(n=>{
-
-let c=document.createElement("div");
-c.className="smallCell";
-c.innerText=(n==="FREE")?"F":n;
-
-// ⭐ FREE
-if(n==="FREE"){
-c.style.background="gold";
-c.style.color="black";
+// ── GAME CARDS ──
+function renderGameCards(){
+  const box = document.getElementById('myGameCard');
+  if(!box) return;
+  box.innerHTML = '';
+  if(confirmedCards.length === 0){
+    box.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:6px;">ምንም card የለም</div>';
+    return;
+  }
+  confirmedCards.forEach(id => box.appendChild(buildCardBoard(id, true)));
+}
+function buildCardBoard(id,isMine){
+  const wrap=document.createElement('div');wrap.className='game-board-wrap';wrap.dataset.cardId=id;
+  const title=document.createElement('div');title.className='game-board-title';
+  title.innerHTML=`<span style="color:var(--gold)">Card #${id}</span>`;
+  const g=document.createElement('div');g.className='game-grid';g.id='gg'+id;
+  ['B','I','N','G','O'].forEach(h=>{const d=document.createElement('div');d.className='gc header';d.textContent=h;g.appendChild(d);});
+  boards[id].forEach((n,i)=>{
+    const d=document.createElement('div');
+    d.className='gc'+(n==='FREE'?' free-cell':'');
+    d.id='gc'+id+'_'+i;d.textContent=n==='FREE'?'★':n;
+    if(n!=='FREE'&&calledNumbers.includes(n))d.classList.add(isMine?'hit-mine':'hit-other');
+    g.appendChild(d);
+  });
+  wrap.appendChild(title);wrap.appendChild(g);return wrap;
 }
 
-if(data[id] === userId){
-c.dataset.mine = "yes";      // ✅ VERY IMPORTANT
-c.style.background = "#003300";
-}else{
-c.dataset.mine = "no";       // ✅ VERY IMPORTANT
-c.style.background = "#330000";
-}
-board.appendChild(c);
-
-});
-wrap.appendChild(title);
-wrap.appendChild(board);
-box.appendChild(wrap);
-
-});
-
-}
-
-/* AUTO */
-document.getElementById("winnerBox").style.display="none";
-
-/* START GAME BUTTON */
-window.startGame = async ()=>{
-
-// 🔓 unlock sound (VERY IMPORTANT)
-let unlock = new Audio(
-"https://translate.google.com/translate_tts?ie=UTF-8&tl=en&q=Start&client=tw-ob"
-);
-unlock.play().catch(()=>{});
-await set(ref(db,"game/total"), 0);
-await set(ref(db,"game/prize"), 0);
-
-// ከዚህ በታች ያለው ኮድ አይቀየር
-await set(ref(db,"game/winners"), null);
-
-if(confirmedCards.length===0){
-alert("👉 ቢያንስ 1 card ምረጥ!");
-return;
+function updateGameCards(){
+  confirmedCards.forEach(id=>{
+    boards[id].forEach((n,i)=>{
+      if(n==='FREE')return;
+      const d=document.getElementById('gc'+id+'_'+i);
+      if(!d)return;
+      if(calledNumbers.includes(n))d.classList.add('hit-mine');
+    });
+  });
+  Object.entries(allConfirmedData).filter(([k,v])=>String(v)!==String(userId)).forEach(([k])=>{
+    const id=Number(k);
+    boards[id].forEach((n,i)=>{
+      if(n==='FREE')return;
+      const d=document.getElementById('gc'+id+'_'+i);
+      if(!d)return;
+      if(calledNumbers.includes(n))d.classList.add('hit-other');
+    });
+  });
 }
 
-let snap=await get(gameRef);
-
-if(snap.exists() && snap.val().started){
-alert("Game already started!");
-return;
-}
-
-await set(gameRef,{
-started:true,
-host:userId
-});
+// ── NAV ──
+window.goLive=()=>{
+  if(!gameStarted){showToast('⏳ ጫወታው ገና አልጀመረም!');return;}
+  showScreen('gameScreen');buildTV();renderGameCards();updateGameCards();
 };
 
-/* STOP */
-function stopGame(){
-clearInterval(interval);
-gameStarted=false;
+// ── MY CARDS ──
+function renderMyCards(){
+  const box=document.getElementById('myCardsList');box.innerHTML='';
+  if(confirmedCards.length===0){
+    box.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">No cards confirmed yet</p>';
+    return;
+  }
+  confirmedCards.forEach(id=>{
+    const wrap=document.createElement('div');wrap.className='game-board-wrap';
+    const title=document.createElement('div');title.className='game-board-title';
+    title.innerHTML=`<span style="color:var(--gold)">Card #${id}</span>`;
+    const g=document.createElement('div');g.className='game-grid';
+    ['B','I','N','G','O'].forEach(h=>{const d=document.createElement('div');d.className='gc header';d.textContent=h;g.appendChild(d);});
+    boards[id].forEach(n=>{
+      const d=document.createElement('div');d.className='gc'+(n==='FREE'?' free-cell':'');
+      d.textContent=n==='FREE'?'★':n;
+      if(n!=='FREE'&&calledNumbers.includes(n))d.classList.add('hit-mine');
+      g.appendChild(d);
+    });
+    wrap.appendChild(title);wrap.appendChild(g);box.appendChild(wrap);
+  });
 }
+// ── ROUND HISTORY ──
+window.loadHistory = async () => {
+  const box = document.getElementById('historyList');
+  box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading...</p>';
 
-/* NAVIGATION */
-window.openMyCards=()=>{
+  const snap = await get(ref(db, 'allWinners'));
+  const autoSnap = await get(ref(db, 'autoMode/round'));
+  const data = snap.val();
+  const currentRound = autoSnap.val() || 1;
 
-if(confirmedCards.length<1) return;
+  if(!data || !Object.keys(data).length){
+    box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">📭 ምንም ታሪክ የለም</p>';
+    return;
+  }
 
-// ❌ REMOVE GAME CARDS (others)
-document.getElementById("gameCards").innerHTML = "";
+  const winners = (Array.isArray(data) ? data : Object.values(data))
+  .filter(w => !w.isBot);
+  box.innerHTML = '';
 
-selectScreen.classList.remove("active");
-homeScreen.classList.add("active");
-document.getElementById("gameScreen").classList.remove("active");
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:0.72rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;padding:4px 2px 10px;';
+  header.textContent = 'Round ' + currentRound + ' — ያለፉ አሸናፊዎች';
+  box.appendChild(header);
 
-let box=document.getElementById("myBoards");
-box.innerHTML="";
+  winners.forEach((w, i) => {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background:var(--card);border:1px solid var(--border);
+      border-radius:14px;padding:14px 16px;margin-bottom:10px;
+      display:flex;align-items:center;gap:12px;
+    `;
+    const isMine = String(w.user) === String(userId);
+    if(isMine) card.style.borderColor = 'var(--gold)';
+    card.innerHTML = `
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--muted);width:30px;text-align:center;">${i+1}</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:0.92rem;color:${isMine?'var(--gold)':'var(--text)'};">
+          🏆 ${w.displayName || w.user} ${isMine ? '(You)' : ''}
+        </div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:3px;">Card #${w.cardId}</div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">
+          ${w.time ? new Date(w.time).toLocaleString('am-ET',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:var(--green);">${w.prize || '—'}</div>
+        <div style="font-size:0.65rem;color:var(--muted);letter-spacing:1px;">ብር</div>
+      </div>
+    `;
+    box.appendChild(card);
+  });
+};
+// ── WIN HISTORY ──
+window.loadWinHistory = async () => {
+  const box = document.getElementById('winHistoryList');
+  box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading...</p>';
 
-confirmedCards.forEach(id=>{
+  const snap = await get(ref(db, 'allWinners'));
+const data = snap.val();
 
-let wrap=document.createElement("div");
+if(!data){
+  box.innerHTML = '<p ...>📭 ምንም አሸናፊ ታሪክ የለም</p>';
+    document.getElementById('whTotalWins').textContent = '0';
+    document.getElementById('whTotalPrize').textContent = '0';
+    document.getElementById('whBestWin').textContent = '0';
+    return;
+  }
 
-let t=document.createElement("div");
-t.innerText="Card "+id;
-t.style.textAlign="center";
-t.style.color="orange";
+  const allWinners = Array.isArray(data) ? data : Object.values(data);
+  const myWins = allWinners.filter(w => String(w.user) === String(userId));
 
-let board=document.createElement("div");
-board.className="smallBoard";
+  if(!myWins.length){
+    box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">😔 ገና አላሸነፍክም — ሞክር!</p>';
+    document.getElementById('whTotalWins').textContent = '0';
+    document.getElementById('whTotalPrize').textContent = '0';
+    document.getElementById('whBestWin').textContent = '0';
+    return;
+  }
 
-boards[id].forEach(n=>{
-let c=document.createElement("div");
-c.className="smallCell";
-c.innerText=(n==="FREE")?"F":n;
+  const totalWins = myWins.length;
+  const totalPrize = myWins.reduce((sum, w) => sum + (w.prize || 0), 0);
+  const bestWin = Math.max(...myWins.map(w => w.prize || 0));
 
-if(n==="FREE"){
-c.style.background="gold";
-c.style.color="black";
-}
+  document.getElementById('whTotalWins').textContent = totalWins;
+  document.getElementById('whTotalPrize').textContent = totalPrize;
+  document.getElementById('whBestWin').textContent = bestWin;
 
-board.appendChild(c);
-});
+  box.innerHTML = '';
 
-wrap.appendChild(t);
-wrap.appendChild(board);
-box.appendChild(wrap);
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:0.72rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;padding:4px 2px 10px;';
+  header.textContent = totalWins + ' አሸናፊ ጊዜ';
+  box.appendChild(header);
 
-});
+  myWins.sort((a,b) => (b.time||0) - (a.time||0));
 
+  myWins.forEach((w) => {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background:linear-gradient(135deg,#1a1500,#0d1200);
+      border:1px solid var(--gold);
+      border-radius:14px;padding:14px 16px;margin-bottom:10px;
+      display:flex;align-items:center;gap:12px;
+    `;
+    card.innerHTML = `
+      <div style="font-size:1.8rem;">🏆</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:0.92rem;color:var(--gold);">
+          Card #${w.cardId}
+        </div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:3px;">
+          ${w.time ? new Date(w.time).toLocaleString('am-ET',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--green);line-height:1;">${w.prize || '—'}</div>
+        <div style="font-size:0.65rem;color:var(--muted);letter-spacing:1px;">ብር</div>
+      </div>
+    `;
+    box.appendChild(card);
+  });
 };
 
-/* ACCOUNT */
-window.openAccount=()=>{
-gameStarted = false;
-// 🔥 hide all screens
-selectScreen.classList.remove("active");
-homeScreen.classList.remove("active");
-document.getElementById("gameScreen").classList.remove("active");
 
-// ✅ show account
-accountScreen.classList.add("active");
+// ════════════════════════════════════════════════════════
+// ── LEADERBOARD — game ጀምሮ ሳለ select screen ላይ ──────
+// ════════════════════════════════════════════════════════
 
-// 🔥 update balance
-document.getElementById("balance").innerText = balance;
-};
+function toggleGameUI(started){
+  const cardSection  = document.getElementById('cardSelectSection');
+  const legendRow    = document.querySelector('.legend-row');
+  const previewPanel = document.getElementById('cardPreviewPanel');
+  const lbPanel      = document.getElementById('leaderboardPanel');
+  const confirmBtn   = document.getElementById('confirmBtn');
+  const bottomBar    = document.getElementById('bottomBar');
 
-/* BACK */
-window.goBack=()=>{
-
-homeScreen.classList.remove("active");
-accountScreen.classList.remove("active");
-document.getElementById("gameScreen").classList.remove("active");
-selectScreen.classList.add("active");
-
-// 🔥 LIVE BUTTON CONTROL
-let liveBtn = document.getElementById("liveBtn");
-
-if(liveBtn){
-
-get(gameRef).then(snap=>{
-let data = snap.val();
-
-// ✔ SHOW ONLY IF GAME STARTED
-if(data && data.started){
-liveBtn.style.display = "inline-block";
-}else{
-liveBtn.style.display = "none";
-}
-});
-
+  if(started){
+    // Hide card selection UI
+    if(cardSection)  cardSection.style.display  = 'none';
+    if(legendRow)    legendRow.style.display     = 'none';
+    if(previewPanel) previewPanel.classList.remove('show');
+    // Show leaderboard
+    lbPanel.classList.add('show');
+    // Change bottom bar button to LIVE
+    confirmBtn.style.background = 'linear-gradient(135deg,var(--red),#cc0022)';
+    confirmBtn.innerHTML = '🔴 LIVE ጨዋታ ክፈት';
+    confirmBtn.onclick = ()=>{ showScreen('gameScreen'); buildTV(); renderGameCards(); updateGameCards(); };
+  } else {
+    // Show card selection UI
+    if(cardSection)  cardSection.style.display  = '';
+    if(legendRow)    legendRow.style.display     = '';
+    // Hide leaderboard
+    lbPanel.classList.remove('show');
+    // Restore confirm button
+    confirmBtn.style.background = 'linear-gradient(135deg,var(--green),#00a854)';
+    confirmBtn.innerHTML = '✔ Confirm Card <span class="sel-badge" id="selectedCountBadge" style="display:none"></span>';
+    confirmBtn.onclick = confirmCard;
+  }
 }
 
-};
-window.goLive = async ()=>{
-
-let liveBtn = document.getElementById("liveBtn");
-
-// 🔥 RESET FIRST (VERY IMPORTANT)
-tvGrid.innerHTML = "";
-document.getElementById("gameCards").innerHTML = "";
-
-// screens
-selectScreen.classList.remove("active");
-homeScreen.classList.remove("active");
-accountScreen.classList.remove("active");
-document.getElementById("gameScreen").classList.add("active");
-
-if(liveBtn) liveBtn.style.display = "none";
-
-// rebuild
-buildTV();
-await showGameCards();
-function restoreTicks(){
-
-document.querySelectorAll(".smallCell").forEach(c=>{
-
-let text = c.innerText.trim();
-
-// BINGO header skip
-if(["B","I","N","G","O"].includes(text)) return;
-
-// FREE
-if(text === "F"){
-c.style.background="gold";
-c.style.color="black";
-return;
+function calcHits(cardId){
+  return boards[cardId].filter(n => n !== 'FREE' && calledNumbers.includes(n)).length;
 }
 
-let val = Number(text);
+// How many numbers needed to complete best bingo line
+function calcBestLine(cardId){
+  const b = boards[cardId];
+  const lines = [];
+  // Rows
+  for(let r=0;r<5;r++) lines.push([r*5,r*5+1,r*5+2,r*5+3,r*5+4]);
+  // Cols
+  for(let c=0;c<5;c++) lines.push([c,c+5,c+10,c+15,c+20]);
+  // Diagonals
+  lines.push([0,6,12,18,24]);
+  lines.push([4,8,12,16,20]);
 
-if(calledNumbers.includes(val)){
-c.style.background = "#00e676";
-c.style.color = "white";
+  let minNeeded = 5;
+  lines.forEach(line=>{
+    const needed = line.filter(i=>{
+      const n = b[i];
+      return n !== 'FREE' && !calledNumbers.includes(n);
+    }).length;
+    if(needed < minNeeded) minNeeded = needed;
+  });
+  return minNeeded; // 0 = BINGO!
 }
 
-});
+function renderLeaderboard(){
+  const list = document.getElementById('lbList');
+  const calledEl = document.getElementById('lbCalledCount');
+  if(calledEl) calledEl.textContent = calledNumbers.length;
+  if(!list) return;
 
+  const entries = Object.entries(allConfirmedData);
+  if(entries.length === 0){
+    list.innerHTML = '<div class="lb-empty">ምንም ተጫዋች የለም</div>';
+    return;
+  }
+
+  // Build score for each card
+  const scores = entries.map(([cardId, owner])=>{
+    const id = Number(cardId);
+    const hits = calcHits(id);
+    const needed = calcBestLine(id);
+    const isMine = String(owner) === String(userId);
+    const displayName = displayNames[owner] || String(owner);
+const label = isMine ? 'You — Card #'+id : displayName + ' — Card #'+id;
+    return { id, hits, needed, isMine, label, owner };
+  });
+
+  // Sort: fewest needed first (closest to bingo), then most hits
+  scores.sort((a,b)=> a.needed - b.needed || b.hits - a.hits);
+
+  list.innerHTML = '';
+  scores.forEach((s, idx)=>{
+    const rank = idx + 1;
+    const pct  = Math.round((s.hits / 24) * 100); // 24 non-FREE cells
+
+    const row = document.createElement('div');
+    row.className = 'lb-row' + (s.isMine ? ' lb-mine' : '') + (rank === 1 ? ' lb-top' : '');
+
+    // Progress bar background
+    const bar = document.createElement('div');
+    bar.className = 'lb-bar';
+    bar.style.width = pct + '%';
+
+    // Rank
+    const rankEl = document.createElement('div');
+    rankEl.className = 'lb-rank' + (rank<=3?' r'+rank:'');
+    rankEl.textContent = rank === 1 ? '👑' : rank;
+
+    // Info
+    const info = document.createElement('div');
+    info.className = 'lb-info';
+    info.innerHTML = `<div class="lb-name">${s.label}</div>
+      <div class="lb-card-id">${s.needed === 0 ? '🎉 BINGO!' : s.needed + ' away from BINGO'}</div>`;
+
+    // Hits
+    const hitsEl = document.createElement('div');
+    hitsEl.className = 'lb-hits';
+    hitsEl.innerHTML = `<div class="lb-hit-num">${s.hits}</div><div class="lb-hit-label">hits</div>`;
+
+    // Mini dot grid (24 cells)
+    const dots = document.createElement('div');
+    dots.className = 'lb-progress-dots';
+    boards[s.id].forEach(n=>{
+      if(n==='FREE') return;
+      const d = document.createElement('div');
+      const isHit = calledNumbers.includes(n);
+      d.className = 'lb-dot' + (isHit ? (s.isMine ? ' hit-mine' : ' hit') : '');
+      dots.appendChild(d);
+    });
+
+    row.appendChild(bar);
+    row.appendChild(rankEl);
+    row.appendChild(info);
+    row.appendChild(hitsEl);
+    row.appendChild(dots);
+    list.appendChild(row);
+    const gameLb = document.getElementById('gameLbList');
+if(gameLb) gameLb.innerHTML = list.innerHTML;
+  });
 }
-// 🔥 reload called numbers fresh
-let snap = await get(ref(db,"game/calledNumbers"));
-let nums = Object.values(snap.val() || {});
 
-calledNumbers = nums;
-
-nums.forEach(n=>{
-let el = document.getElementById("num"+n);
-if(el) el.classList.add("called");
-});
-
-};
-/* PAYMENT */
-let amount=0;
-
-let amounts=[50,100,200,300,500,1000];
-let grid=document.getElementById("betGrid");
-
-grid.innerHTML="";
-
+// ── DEPOSIT ──
+const amounts=[50,100,200,300,500,1000];
+const depGrid=document.getElementById('depositGrid');
 amounts.forEach(a=>{
-let b=document.createElement("button");
-b.className="bet";
-b.innerText=a+" ብር";
-b.onclick=()=>openPay(a);
-grid.appendChild(b);
+  const b=document.createElement('div');b.className='dep-btn';
+  b.innerHTML=`${a}<span class="dep-etb">ብር</span>`;
+  b.onclick=()=>openPayModal(a);
+  depGrid.appendChild(b);
 });
 
-window.openPay=(val)=>{
-amount=val;
-document.getElementById("amountText").innerText=val+" ብር";
-document.getElementById("modal").style.display="flex";
+// ── ማውጣት button ──
+const wdSection = document.createElement('div');
+wdSection.style.cssText = 'margin:14px 0 0;';
+wdSection.innerHTML = `
+  <div class="dep-section-title">🏧 ማውጣት</div>
+  <button onclick="openWithdraw()" style="
+    width:100%;background:linear-gradient(135deg,#1a1200,#0d0a00);
+    border:1px solid var(--gold);border-radius:14px;padding:14px;
+    color:var(--gold);font-family:'Outfit',sans-serif;font-weight:700;
+    font-size:0.95rem;cursor:pointer;display:flex;align-items:center;
+    justify-content:center;gap:8px;">
+    🏧 ገንዘብ ማውጣት
+  </button>
+`;
+document.querySelector('.dep-section').appendChild(wdSection);
+
+window.openPayModal=(amt)=>{
+  const tg = window.Telegram?.WebApp;
+  if(tg){
+    tg.close();
+    setTimeout(()=>{
+      tg.openTelegramLink(`https://t.me/Firstanywharebingobot?start=deposit_${amt}`);
+    }, 300);
+  } else {
+    window.open(`https://t.me/Firstanywharebingobot?start=deposit_${amt}`,'_blank');
+  }
 };
 
-window.closePay=()=>{
-document.getElementById("modal").style.display="none";
+window.openWithdraw=()=>{
+  const tg = window.Telegram?.WebApp;
+  if(tg){
+    tg.close();
+    setTimeout(()=>{
+      tg.openTelegramLink(`https://t.me/Firstanywharebingobot?start=withdraw_${userId}`);
+    }, 300);
+  } else {
+    window.open(`https://t.me/Firstanywharebingobot?start=withdraw_${userId}`,'_blank');
+  }
+};
+window.closePayModal=()=>document.getElementById('payModal').classList.remove('open');
+
+document.getElementById('fileInput').onchange=()=>{
+  document.getElementById('uploadZone').textContent='✅ Photo selected!';
 };
 
-document.getElementById("fileInput").onchange=()=>{
-document.querySelector(".upload").innerText="✅ ተመርጧል";
+window.sendPayment=async()=>{
+  const file=document.getElementById('fileInput').files[0];
+  if(!file){showToast('📷 ፎቶ አስገባ!');return;}
+
+  // 🔒 Validation
+  if(payAmount <= 0){showToast('❌ Amount 0 ሊሆን አይችልም!');return;}
+  if(payAmount < 10){showToast('❌ Minimum deposit 10 ብር ነው!');return;}
+  if(payAmount > 10000){showToast('❌ Maximum deposit 10,000 ብር ነው!');return;}
+  try{
+    const name=Date.now()+'.jpg';
+    const r=sRef(storage,'payments/'+name);
+    await uploadBytes(r,file);
+    const url=await getDownloadURL(r);
+    await push(ref(db,'payments'),{user_id:userId,amount:payAmount,image:url,status:'pending',time:Date.now()});
+    showToast('✅ Sent! Admin ያረጋግጣል');
+    closePayModal();
+  }catch(e){showToast('❌ Error: '+e.message);}
 };
-
-window.send = async ()=>{
-
-let file=document.getElementById("fileInput").files[0];
-if(!file){
-alert("📷 ፎቶ አስገባ!");
-return;
-}
-
-let name=Date.now()+".jpg";
-let refS=sRef(storage,"payments/"+name);
-
-await uploadBytes(refS,file);
-let url=await getDownloadURL(refS);
-
-// save payment
-await push(ref(db,"payments"),{
-user_id: username,
-amount: amount,
-image: url,
-status: "pending"
-});
-
-let userRef = ref(db,"users/"+username+"/balance");
-
-let snap = await get(userRef);
-let current = snap.val() || 0;
-
-// ✅ 🔥 FIX HERE
-await set(userRef, current + amount);
-
-showMsg("✅ ብር ተጨመረ!");
-closePay();
-
-}
-onValue(ref(db,"game/reset"), snap=>{
-
-let t = snap.val();
-if(!t) return;
-
-console.log("🔥 RESET RECEIVED");
-
-confirmedCards = [];
-calledNumbers = [];
-
-previewDiv.innerHTML = "";
-selectedCard = null;
-
-document.querySelectorAll(".card").forEach(card=>{
-card.classList.remove("selected");
-card.style.background="#333";
-card.style.color="white";
-});
-
-tvGrid.innerHTML="";
-document.getElementById("gameCards").innerHTML="";
-document.getElementById("winnerBox").style.display="none";
-// 🔥 reset UI numbers
-document.getElementById("prizeAmount").innerText = 0;
-document.getElementById("playerCount").innerText = 0;
-document.getElementById("cardCount").innerText = 0;
-countSpan.innerText="(0/5)";
-
-document.getElementById("gameScreen").classList.remove("active");
-homeScreen.classList.remove("active");
-accountScreen.classList.remove("active");
-selectScreen.classList.add("active");
-
-});
-window.resetGame = async ()=>{
-stopAuto();
-
-await set(ref(db,"game/status"), {started:false});
-await set(ref(db,"game/calledNumbers"), null);
-
-// 🔥 IMPORTANT
-
-await set(ref(db,"game/winners"), null);
-await set(ref(db,"game/paid"), false);
-await set(ref(db,"game/reset"), Date.now());
-
-document.getElementById("status").innerText="⏹ WAITING";
-document.getElementById("grid").innerHTML="";
-document.getElementById("winnerBox").innerText="";
-await set(ref(db,"game/prize"), 0);
-await set(ref(db,"game/total"), 0);
-await set(ref(db,"game/confirmedNumbers"), null);
-};
-function updateCards(){
-
-document.querySelectorAll(".smallCell").forEach(c=>{
-
-let text = c.innerText.trim();
-
-// BINGO header skip
-if(["B","I","N","G","O"].includes(text)) return;
-
-// FREE
-if(text === "F"){
-c.style.background="gold";
-c.style.color="black";
-return;
-}
-
-let val = Number(text);
-
-if(calledNumbers.includes(val)){
-
-let wrap = c.closest("[data-mine]");
-let isMine = wrap && wrap.dataset.mine === "yes";
-
-if(isMine){
-c.style.background = "#00e676"; // yours
-}else{
-c.style.background = "#ff1744"; // others
-}
-
-c.style.color="white";
-}
-
-});
-
-}
-window.forceReset = async ()=>{
-
-await set(ref(db,"game/status"), {started:false});
-await set(ref(db,"game/calledNumbers"), null);
-await set(ref(db,"game/confirmedNumbers"), null);
-await set(ref(db,"game/winners"), null);
-
-await set(ref(db,"game/reset"), Date.now());
-
-alert("🔥 Game Fixed / Reset!");
-};
-function stopAuto(){
-try{
-clearInterval(interval);
-interval = null;
-}catch(e){}
-}
-
-</script>    
-</body>      
-</html>  
+</script>
+</body>
+  </html>
