@@ -175,7 +175,7 @@ function broadcast(data) {
 }
 
 // ══ TTS PROXY ══
-const SOUNDS_SERVER = 'https://bingo-bingo-bingo.onrender.com';
+const SOUNDS_SERVER = 'http://localhost:3001';
 app.get('/tts/winner-announce', async (req, res) => {
   try {
     const response = await new Promise((resolve, reject) => {
