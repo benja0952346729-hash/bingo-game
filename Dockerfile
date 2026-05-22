@@ -16,4 +16,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "node server.js & PORT=3002 node Bot.js & PORT=3001 node tts.js & BOT_PORT=10000 python3 Bot.py & wait"]
+CMD ["sh", "-c", "node server.js & PORT=3002 node Bot.js & PORT=3001 node tts.js & BOT_PORT=9000 python3 Bot.py & wait"]
