@@ -2133,4 +2133,24 @@ app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
     res.json({ status: 'ok' });
   }
 });
+// ── Auto-release expired locks ──
+setInterval(async () => {
+  const LOCK_MS = 3 * 60 * 1000; // 3 ደቂቃ
+  const now = Date.now();
+  
+  const withdrawals = await dbGet('bot/withdrawals') || {};
+  
+  for (const [key, wd] of Object.entries(withdrawals)) {
+    if (wd.status !== 'accepted') continue;
+    if (!wd.acceptedAt) continue;
+    
+    // 3 ደቂቃ ካለፈ — auto release
+    if (now - wd.acceptedAt > LOCK_MS) {
+      await dbSet(`bot/withdrawals/${key}/status`, 'pending');
+      await dbSet(`bot/withdrawals/${key}/acceptedBy`, null);
+      await dbSet(`bot/withdrawals/${key}/acceptedAt`, null);
+      console.log(`⏰ Auto-released: ${key}`);
+    }
+  }
+}, 30 * 1000); 
 app.listen(process.env.PORT || 3000, () => console.log('🚀 Server running!'));
