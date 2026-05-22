@@ -821,7 +821,7 @@ async function broadcastPromotion(promoData) {
   // Photo buffer ጋር
   const replyMarkup = JSON.stringify({
     inline_keyboard: [[
-      { text: '🎮 Play Now', web_app: { url: 'https://game-production-7f86.up.railway.app/' } }
+      { text: '🎮 Play Now', web_app: { url: 'https://benja0952346729-hash.github.io/Game/'  } }
     ]]
   });
   const boundary = '----FormBoundary' + Date.now();
