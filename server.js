@@ -2098,6 +2098,7 @@ app.post('/extract-sms', (req, res) => {
 app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
   try {
     const smsText = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    console.log('📱 SMS received:', smsText.slice(0, 100));
     const body = JSON.stringify({ text: smsText });
     const options = {
       hostname: 'localhost',
@@ -2118,6 +2119,7 @@ app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
     r2.write(body);
     r2.end();
   } catch(e) {
+    console.log('❌ SMS error:', e.message);
     res.json({ status: 'ok' });
   }
 });
