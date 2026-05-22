@@ -1729,19 +1729,23 @@ app.post(
           });
         } catch(e) { console.error('❌ TG photo error:', e.message); }
       }
-   await pool.query('UPDATE users SET balance = GREATEST(0, balance - $1) WHERE uid=$2', [amount, uid]);
-const balR = await pool.query('SELECT balance FROM users WHERE uid=$1', [uid]);
-const newBal = balR.rows[0]?.balance || 0;
-broadcast({ type: 'balance', uid, balance: newBal });
+      
       allWd[key].status = 'approved';
-      await setState('bot/withdrawals', allWd);
-      await updateAnalytics('totalWithdrawals', amount);
-      await pool.query(
-        'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-        [uid, `✅ ${amount} ብር በ ${method} ተላከ!`, Date.now()]
-      );
-      broadcast({ type: 'withdrawal_approved', key, uid, amount });
-      res.json({ ok: true });
+await setState('bot/withdrawals', allWd);
+await updateAnalytics('totalWithdrawals', amount);
+
+// ✅ pending_withdrawal ያጸዳል
+await pool.query(
+  "UPDATE game_state SET value='0' WHERE key=$1",
+  [`users/${uid}/pending_withdrawal`]
+);
+
+await pool.query(
+  'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
+  [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}`, Date.now()]
+);
+broadcast({ type: 'withdrawal_approved', key, uid, amount });
+res.json({ ok: true });
     } catch(e) { res.json({ ok: false, msg: e.message }); }
   }
 );
