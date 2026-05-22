@@ -2095,5 +2095,33 @@ app.post('/extract-sms', (req, res) => {
     res.status(500).json({ refs: [], amount: 0, error: err.message });
   }
 });
+app.post('/sms', express.raw({type: '*/*'}), async (req, res) => {
+  try {
+    let body = '';
+    if (req.body) {
+      body = Buffer.isBuffer(req.body) ? req.body.toString() : JSON.stringify(req.body);
+    }
+    const options = {
+      hostname: 'localhost',
+      port: 9000,
+      path: '/sms',
+      method: 'POST',
+      headers: {
+        'Content-Type': req.headers['content-type'] || 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    };
+    const r2 = http.request(options, (r) => {
+      let d = '';
+      r.on('data', c => d += c);
+      r.on('end', () => res.json({ status: 'ok' }));
+    });
+    r2.on('error', () => res.json({ status: 'ok' }));
+    r2.write(body);
+    r2.end();
+  } catch(e) {
+    res.json({ status: 'ok' });
+  }
+});
 
 app.listen(process.env.PORT || 3000, () => console.log('🚀 Server running!'));
