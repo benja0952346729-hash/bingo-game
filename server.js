@@ -175,8 +175,7 @@ function broadcast(data) {
 }
 
 // ══ TTS PROXY ══
-const SOUNDS_SERVER = 'https://game-production-7f86.up.railway.app';
-
+const SOUNDS_SERVER = 'https://bingo-bingo-bingo.onrender.com';
 app.get('/tts/winner-announce', async (req, res) => {
   try {
     const response = await new Promise((resolve, reject) => {
