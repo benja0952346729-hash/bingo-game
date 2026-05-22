@@ -1,0 +1,22 @@
+FROM node:18-slim
+
+# Python ጭምር እንጫናለን
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+# Python packages
+RUN pip3 install --break-system-packages \
+    pyTelegramBotAPI flask requests
+
+# PM2
+RUN npm install -g pm2
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+
+EXPOSE 8000
+
+CMD ["pm2-runtime", "start", "ecosystem.config.js"]
