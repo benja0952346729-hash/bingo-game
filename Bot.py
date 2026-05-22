@@ -234,8 +234,8 @@ flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def home():
-    return "Bingo Bot is running"
-
+    from flask import redirect
+    return redirect("https://bingo-bingo-bingo.onrender.com", code=302)
 # ══════════════════════════════════════════
 # SMS WEBHOOK
 # ══════════════════════════════════════════
