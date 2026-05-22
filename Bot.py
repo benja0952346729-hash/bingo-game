@@ -1114,6 +1114,7 @@ def clear_pending(m):
     if len(parts) < 2:
         bot.send_message(m.chat.id, "Usage: /clearpending <user_id>"); return
     uid = parts[1]
+    db_set(f"users/{uid}/pending_withdrawal", 0)
     set_temp(uid, None)
     payments = db_get("payments") or {}
     count = 0
@@ -1122,6 +1123,11 @@ def clear_pending(m):
         if str(pay.get("user_id")) == uid and pay.get("status") == "pending":
             db_set(f"payments/{pid}/status", "cancelled")
             count += 1
+    withdrawals = db_get("bot/withdrawals") or {}
+    for wid, w in withdrawals.items():
+        if not isinstance(w, dict): continue
+        if str(w.get("user_id")) == uid and w.get("status") == "pending":
+            db_set(f"bot/withdrawals/{wid}/status", "cancelled")
     bot.send_message(m.chat.id,
         f"✅ User <code>{uid}</code> cleared!\n📋 {count} pending cancelled.")
 
