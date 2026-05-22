@@ -2101,7 +2101,7 @@ app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
     console.log('📱 SMS received:', smsText.slice(0, 100));
     const body = JSON.stringify({ text: smsText });
     const options = {
-      hostname: 'localhost',
+      hostname: '127.0.0.1',
       port: 9000,
       path: '/sms',
       method: 'POST',
