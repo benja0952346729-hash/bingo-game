@@ -5,18 +5,17 @@ RUN apt-get update && apt-get install -y nodejs npm
 
 WORKDIR /app
 
-# Python dependencies
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Python deps
+COPY Bot.py .
+RUN pip install requests pyTelegramBotAPI flask
 
-# Node dependencies
+# Node deps
 COPY package.json .
 RUN npm install
+COPY Bot.js .
+COPY tts.js .
 
-# ሁሉም files
-COPY . .
+EXPOSE 10000
 
-EXPOSE 3000
-
-# ሁለቱንም አብረው ጀምር
-CMD python bot.py & node server.js & wait
+# ሦስቱንም አብረው ጀምር
+CMD python Bot.py & node Bot.js & node tts.js & wait
