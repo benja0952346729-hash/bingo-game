@@ -6,6 +6,9 @@
 ║  FIXED: photo OCR message + state race condition                 ║
 ║  FIXED: Amharic button labels + withdraw indentation bug         ║
 ║  FIXED: SMS amount used as source of truth + timeout 20min      ║
+║  FIXED: Outgoing SMS (transferred/sent/paid) ignore             ║
+║  FIXED: Approved pid added to _cancelled_pids (no false timeout)║
+║  FIXED: Admin approve saves ref + removes buttons               ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -235,6 +238,7 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def home():
     return "Bingo Bot is running"
+
 # ══════════════════════════════════════════
 # SMS WEBHOOK
 # ══════════════════════════════════════════
@@ -359,9 +363,6 @@ def extract_refs(text):
     for m in re.finditer(r'/BranchReceipt/([A-Z0-9]{8,20})[&\-]', text, re.IGNORECASE):
         add(m.group(1))
 
-    # CBE id URL: /?id=FT26118W65DX41057146  → REF=FT26118W65DX (first 14 chars)
-    # CBE id URL handled by bare FT pattern below
-
     # CBE "with Ref No FTxxxxxxxx"
     for m in re.finditer(r'Ref\s+No\s+(FT[A-Z0-9]{6,16})', text, re.IGNORECASE):
         add(m.group(1))
@@ -418,9 +419,35 @@ def extract_amount(text):
                 continue
     return 0.0
 
+# ══════════════════════════════════════════
+# FIX 1: Outgoing SMS ignore
+# transferred/sent/paid SMS ን ignore ያደርጋል
+# ══════════════════════════════════════════
 def is_bank_sms(text):
     if not text: return False
     t = text.lower()
+
+    # ── Outgoing SMS → ignore (admin ሌላ ሰው ላይ ሲልክ የሚደርስ SMS) ──
+    outgoing_keywords = [
+        "you have transferred",
+        "you have sent",
+        "you have paid",
+        "transferred to",
+        "sent to",
+        "paid to",
+        "your transfer of",
+        "your payment of",
+        "has been debited",
+        "deducted from your account",
+        "amount debited",
+        "etb has been sent",
+        "successfully transferred",
+        "successfully sent",
+        "successfully paid",
+    ]
+    if any(k in t for k in outgoing_keywords):
+        return False
+
     keywords = [
         "from: 127", "from: cbe",
         "ethio telecom",
@@ -473,14 +500,12 @@ def has_pending(uid):
 # SAVED ACCOUNTS HELPERS
 # ══════════════════════════════════════════
 def get_saved_accounts(uid):
-    """User ያስቀመጣቸው accounts ይመልሳል — {method: account_number}"""
     data = db_get(f"users/{uid}/saved_accounts")
     if isinstance(data, dict):
         return data
     return {}
 
 def save_account(uid, method, account):
-    """Account ያስቀምጣል — per method"""
     db_set(f"users/{uid}/saved_accounts/{method}", account)
 
 # ══════════════════════════════════════════
@@ -490,10 +515,10 @@ def handle_sms(sms_text):
     try:
         # ── URL line break አጣምር ──
         sms_text = re.sub(r'(https?://\S+)\s*\n\s*(/\S+)', r'\1\2', sms_text)
-        
+
         # ── FT/DE line break አጣምር ──
         sms_text = re.sub(r'((?:DE|FT)[A-Z0-9]*)\n([A-Z0-9]+)', r'\1\2', sms_text)
-        
+
         refs = extract_refs(sms_text)
         if not refs:
             bot.send_message(ADMIN_ID,
@@ -633,11 +658,15 @@ def do_approve(pid, uid, sms_amount, ref, sms_text=""):
         db_set(f"payments/{pid}/status",         "approved")
         db_set(f"payments/{pid}/verified",        True)
         db_set(f"payments/{pid}/ref",             ref)
-        db_set(f"payments/{pid}/amount",          sms_amount)   # ← SMS amount ያስቀምጥ
+        db_set(f"payments/{pid}/amount",          sms_amount)
         db_set(f"payments/{pid}/sms_amount",      sms_amount)
         set_temp(uid, None)
 
         save_ref(ref, uid, sms_amount)
+
+        # ── FIX 2: Approved pid → _cancelled_pids ይጨምር (timeout false message ይቆማል) ──
+        with _cancelled_lock:
+            _cancelled_pids.add(pid)
 
         try:
             kb = InlineKeyboardMarkup()
@@ -759,8 +788,8 @@ def process_screenshot(m):
     result = db_push("payments", {
         "user_id":          uid,
         "display":          m.from_user.username or m.from_user.first_name or uid,
-        "amount":           0,              # ← SMS ሲደርስ ይሞላል — user amount አይጠቀምም
-        "requested_amount": amount,         # ← user የጠየቀው (reference ብቻ)
+        "amount":           0,
+        "requested_amount": amount,
         "file_id":          file_id,
         "ref":              primary_ref,
         "status":           "pending",
@@ -782,7 +811,7 @@ def process_screenshot(m):
             matched_sms     = sms_pool[ref.upper()]
             matched_sms_ref = ref.upper()
             break
-            
+
     if matched_sms:
         for r in (matched_sms.get("all_refs") or [matched_sms_ref]):
             db_delete(f"bot/sms_pool/{r.upper()}")
@@ -816,6 +845,7 @@ def process_screenshot(m):
                         f"⏳ SMS እየጠበቀ ነው...",
                 reply_markup=kb)
         except: pass
+
 @bot.message_handler(
     func=lambda m: m.forward_date is not None and m.from_user.id == ADMIN_ID,
     content_types=["text", "photo", "document"]
@@ -851,6 +881,7 @@ def handle_forward(m):
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Extract error: {e}")
         threading.Thread(target=handle_sms, args=(text_to_process,), daemon=True).start()
+
 @bot.message_handler(content_types=["photo", "document"])
 def handle_screenshot(m):
     threading.Thread(target=process_screenshot, args=(m,), daemon=True).start()
@@ -1198,10 +1229,8 @@ def handle_text(m):
     uid   = str(m.from_user.id)
     text  = m.text.strip()
     state = get_botstate(uid)
-    
 
     print(f"ID:{m.from_user.id} STATE:{repr(state)} TEXT:{text[:50]}")
-    
 
     if m.from_user.id in ALLOWED_SMS_SENDERS and is_bank_sms(text):
         threading.Thread(target=handle_sms, args=(text,), daemon=True).start()
@@ -1323,7 +1352,6 @@ def handle_text(m):
 
         update_balance(uid, amount, "subtract")
         db_set(f"users/{uid}/pending_withdrawal", amount)
-        # ✅ Account ያስቀምጥ — ቀጥሎ ቶሎ ይጠቀምበታል
         save_account(uid, method, account)
         print(f"DEBUG withdraw saving: uid={uid} amount={amount} method={method} account={account}")
         result = db_push("bot/withdrawals", {
@@ -1373,7 +1401,7 @@ def handle_text(m):
     send_menu(m.chat.id)
 
 # ══════════════════════════════════════════
-# CALLBACK HANDLER  — ✅ FIXED indentation
+# CALLBACK HANDLER
 # ══════════════════════════════════════════
 @bot.callback_query_handler(func=lambda c: True)
 def handle_callback(c):
@@ -1420,7 +1448,6 @@ def handle_callback(c):
             text += f"\n⏳ በመጠባበቅ ላይ ያለ ክፍያ: {pending_wd} ብር"
         bot.send_message(c.message.chat.id, text)
 
-    # ✅ FIXED: withdraw block now correctly indented as elif (not nested inside balance)
     elif data == "withdraw":
         try:
             wd_status = requests.get(f"{SERVER}/withdrawal-status", timeout=5).json()
@@ -1442,7 +1469,6 @@ def handle_callback(c):
             bot.send_message(c.message.chat.id,
                 f"❌ ቀሪ ሂሳብ አናሳ!\nቢያንስ: <b>{MIN_WITHDRAWAL} ብር</b>\nቀሪ ሂሳብ: <b>{bal} ብር</b>")
             return
-        # Pending withdrawal ካለ አይፈቀድም
         pending_wd = db_get(f"users/{uid}/pending_withdrawal") or 0
         if pending_wd > 0:
             bot.send_message(c.message.chat.id,
@@ -1457,12 +1483,10 @@ def handle_callback(c):
             f"ምን ያህል ብር?\n(ቢያንስ: {MIN_WITHDRAWAL} ብር)\n\nቁጥር ብቻ ላክ:")
 
     elif data == "history":
-        # ── Deposits ──
         payments  = db_get("payments") or {}
         deposits  = [p for p in payments.values()
                      if isinstance(p, dict) and str(p.get("user_id")) == uid]
 
-        # ── Withdrawals ──
         withdrawals_all = db_get("bot/withdrawals") or {}
         withdrawals = [w for w in withdrawals_all.values()
                        if isinstance(w, dict) and str(w.get("user_id")) == uid]
@@ -1477,7 +1501,6 @@ def handle_callback(c):
 
         lines = ["📊 <b>ግብይት ታሪክ:</b>\n"]
 
-        # Deposits — ቅርብ 7
         if deposits:
             deposits.sort(key=lambda x: x.get("time", 0), reverse=True)
             lines.append("💳 <b>ገንዘብ ማስገቢያ:</b>")
@@ -1488,13 +1511,9 @@ def handle_callback(c):
                         if p.get("time") else "—")
                 lines.append(f"  {icon} {amt} ብር — {t}")
 
-        # Withdrawals — ቅርብ 7
         if withdrawals:
             lines.append("\n🏧 <b>ገንዘብ ማውጣት:</b>")
-            withdrawals.sort(
-                key=lambda x: x.get("time", ""),
-                reverse=True
-            )
+            withdrawals.sort(key=lambda x: x.get("time", ""), reverse=True)
             for w in withdrawals[:7]:
                 icon   = wd_icons.get(w.get("status"), "⏳")
                 amt    = w.get("amount", 0)
@@ -1528,7 +1547,6 @@ def handle_callback(c):
         hints = {"CBE":"13 digit account number","Telebirr":"10 digit ስልክ ቁጥር",
                  "Awash":"14 digit account number","Other":"Account number"}
 
-        # Saved account ካለ button ያሳይ
         saved = get_saved_accounts(uid)
         saved_acct = saved.get(method)
 
@@ -1545,7 +1563,6 @@ def handle_callback(c):
             reply_markup=kb if saved_acct else None)
 
     elif data.startswith("use_saved_"):
-        # format: use_saved_CBE_1000641057146
         parts  = data.split("_", 3)
         method = parts[2]
         account = parts[3]
@@ -1609,18 +1626,20 @@ def handle_callback(c):
                 f"📲 {method} — <code>{account}</code>\n\n"
                 f"⚠️ Admin Panel ላይ ያስተናግዱ")
 
+    # ══════════════════════════════════════════
+    # FIX 3: Admin approve — ref save + buttons remove + pid cancel
+    # ══════════════════════════════════════════
     elif data.startswith("ap_"):
         parts = data.split("_")
         pid   = parts[1]; u_id = parts[2]
 
-        # SMS amount ከ payment record ያንብብ
         pay_record = db_get(f"payments/{pid}") or {}
         sms_amount = int(float(pay_record.get("sms_amount", 0) or 0))
         req_amount = int(float(pay_record.get("requested_amount", 0) or
                                pay_record.get("amount", 0) or 0))
+        ref = pay_record.get("ref", "")
 
         if sms_amount <= 0:
-            # SMS ገና አልደረሰም — admin manually amount ይጨምር
             bot.answer_callback_query(c.id,
                 "⚠️ SMS amount ገና አልደረሰም! Amount ለማስቀመጥ /givebalance ይጠቀሙ",
                 show_alert=True)
@@ -1633,16 +1652,34 @@ def handle_callback(c):
                 f"<code>/givebalance {u_id} [amount]</code>")
             return
 
+        # ── Ref save — ድጋሚ screenshot ሸወዳ ይቆማል ──
+        if ref:
+            save_ref(ref, u_id, sms_amount)
+
         new_bal = update_balance(u_id, sms_amount, "add")
         db_set(f"payments/{pid}/status",  "approved")
         db_set(f"payments/{pid}/verified", True)
         set_temp(u_id, None)
+
+        # ── Pid → _cancelled_pids ይጨምር — timeout false message ይቆማል ──
+        with _cancelled_lock:
+            _cancelled_pids.add(pid)
+
+        # ── Buttons አጥፋ (reply_markup=None) ──
         try:
             bot.edit_message_caption(
                 chat_id=c.message.chat.id,
                 message_id=c.message.message_id,
-                caption=(c.message.caption or "") + f"\n\n✅ <b>ጸድቋል — {sms_amount} ብር</b>")
-        except: pass
+                caption=(c.message.caption or "") + f"\n\n✅ <b>ጸድቋል — {sms_amount} ብር</b>",
+                reply_markup=None)
+        except:
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=None)
+            except: pass
+
         try:
             kb = InlineKeyboardMarkup()
             kb.add(InlineKeyboardButton("🎮 Play",
@@ -1666,13 +1703,28 @@ def handle_callback(c):
         parts = data.split("_")
         pid = parts[1]; u_id = parts[2]
         db_set(f"payments/{pid}/status", "rejected")
+
+        # ── Pid → _cancelled_pids ይጨምር ──
+        with _cancelled_lock:
+            _cancelled_pids.add(pid)
+
         update_temp(u_id, "retry_count", 0)
+
+        # ── Buttons አጥፋ ──
         try:
             bot.edit_message_caption(
                 chat_id=c.message.chat.id,
                 message_id=c.message.message_id,
-                caption=(c.message.caption or "") + "\n\n❌ <b>ውድቅ ሆኗል</b>")
-        except: pass
+                caption=(c.message.caption or "") + "\n\n❌ <b>ውድቅ ሆኗል</b>",
+                reply_markup=None)
+        except:
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=None)
+            except: pass
+
         try:
             bot.send_message(int(u_id),
                 "📸 Screenshot ጥራት የለውም\n\nግልጽ የሆነ screenshot ድጋሚ ላክ 👇")
@@ -1695,11 +1747,11 @@ def notification_listener():
                     if any(kw in msg for kw in ["withdrawal","ብር withdrawal","ተፈቀደ","rejected","ተመለሰ"]):
                         db_set(f"users/{uid}/pending_withdrawal", 0)
                     try:
-                       bot.send_message        (int(uid), msg)
+                        bot.send_message(int(uid), msg)
                     except:
                         pass
                     requests.post(f"{SERVER}/mark-notification-read",
-                        json={"id":         n["id"]}, timeout=5)
+                        json={"id": n["id"]}, timeout=5)
                 except Exception as e:
                     print(f"Notify error {n['uid']}: {e}")
         except Exception as e:
@@ -1714,7 +1766,7 @@ threading.Thread(target=notification_listener, daemon=True).start()
 MATCH_TIMEOUT      = 20 * 60  # 20 ደቂቃ
 PHOTO_POOL_TIMEOUT = 20 * 60  # 20 ደቂቃ
 
-_cancelled_pids = set()  # አንድ ጊዜ cancel የሆኑ PIDs — ድጋሚ አይሰሩም
+_cancelled_pids = set()
 _cancelled_lock = threading.Lock()
 
 def timeout_checker():
@@ -1732,9 +1784,11 @@ def timeout_checker():
                 uid = str(entry.get("uid", ""))
                 if not pid or not uid: continue
 
-                # ✅ አስቀድሞ approved ከሆነ — entry ብቻ አጸዳ
+                # ── approved/cancelled/rejected → pid ን set ላይ ጨምር ──
                 pay_status = (db_get(f"payments/{pid}") or {}).get("status", "")
                 if pay_status in ("approved", "cancelled", "rejected"):
+                    with _cancelled_lock:
+                        _cancelled_pids.add(pid)
                     for r in (entry.get("all_refs") or [ref_key]):
                         db_delete(f"bot/photo_pool/{r.upper()}")
                     continue
@@ -1744,6 +1798,7 @@ def timeout_checker():
                     if pid in seen_pids: continue
                     seen_pids.add(pid)
                     _cancelled_pids.add(pid)
+
                 for r in (entry.get("all_refs") or [ref_key]):
                     db_delete(f"bot/photo_pool/{r.upper()}")
                 db_set(f"payments/{pid}/status", "cancelled")
@@ -1764,9 +1819,11 @@ def timeout_checker():
                 if not isinstance(pay, dict): continue
                 if pay.get("status") != "pending": continue
                 if now_ts - pay.get("time", 0) / 1000 < MATCH_TIMEOUT: continue
+
                 with _cancelled_lock:
                     if pid in _cancelled_pids: continue
                     _cancelled_pids.add(pid)
+
                 uid     = str(pay.get("user_id"))
                 ref     = pay.get("ref", "")
                 display = pay.get("display") or uid
@@ -1787,7 +1844,7 @@ def timeout_checker():
 
         except Exception as e:
             print(f"Timeout checker error: {e}")
-        time.sleep(60)  # 30→60sec: ብዙ DB calls ይቀንሳሉ
+        time.sleep(60)
 
 threading.Thread(target=timeout_checker, daemon=True).start()
 
@@ -1814,13 +1871,13 @@ def daily_reminder_loop():
                         f"💰 ቀሪ ሂሳብ: <b>{bal} ብር</b>\n\n▶️ አሁን ተጫወት!"
                         if bal > 0 else
                         f"🎮 <b>Bingo Pro ይናፍቅሃል!</b>\n\n"
-                        f"💳 ገنዘብ አስገባ እና ተጫወት!\n▶️ ጠቅ አድርግ 👇"
+                        f"💳 ገንዘብ አስገባ እና ተጫወት!\n▶️ ጠቅ አድርግ 👇"
                     )
                     kb = InlineKeyboardMarkup()
                     kb.add(InlineKeyboardButton("🎮 Play",
                            web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
                     if bal <= 0:
-                        kb.add(InlineKeyboardButton("💳 ገنዘብ አስገባ", callback_data="deposit"))
+                        kb.add(InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"))
                     bot.send_message(int(uid), msg, reply_markup=kb)
                     db_set(f"users/{uid}/last_reminder_sent", now_ts)
                 except Exception as e:
@@ -1859,28 +1916,24 @@ threading.Thread(target=daily_report_loop, daemon=True).start()
 
 # ══════════════════════════════════════════
 # 2-DAY CLEANUP LOOP
-# payments, withdrawals, sms_pool, photo_pool — 2 ቀን ያለፋቸው ይጸዳሉ
 # ══════════════════════════════════════════
-CLEANUP_AGE = 2 * 24 * 60 * 60  # 2 ቀን በሰከንድ
+CLEANUP_AGE = 2 * 24 * 60 * 60  # 2 ቀን
 
 def cleanup_loop():
     while True:
         try:
             now_ts = datetime.now().timestamp()
 
-            # ── Payments (cancelled/rejected/approved + stale pending) ──
             payments = db_get("payments") or {}
             for pid, pay in list(payments.items()):
                 if not isinstance(pay, dict): continue
                 age = now_ts - pay.get("time", 0) / 1000
                 if pay.get("status") == "pending":
-                    # Pending deposit 1 ሰዓት ካለፈ → timeout checker ያመለጠው → አጸዳ
                     if age > 3600:
                         db_delete(f"payments/{pid}")
                 elif age > CLEANUP_AGE:
                     db_delete(f"payments/{pid}")
 
-            # ── Withdrawals — pending አይጸዳም (admin ማየት አለበት) ──
             withdrawals = db_get("bot/withdrawals") or {}
             for wid, w in list(withdrawals.items()):
                 if not isinstance(w, dict): continue
@@ -1893,7 +1946,6 @@ def cleanup_loop():
                         db_delete(f"bot/withdrawals/{wid}")
                 except: continue
 
-            # ── SMS pool (unmatched) ──
             sms_pool = db_get("bot/sms_pool") or {}
             for ref_key, entry in list(sms_pool.items()):
                 if not isinstance(entry, dict): continue
@@ -1901,7 +1953,6 @@ def cleanup_loop():
                 if now_ts - saved_at > CLEANUP_AGE:
                     db_delete(f"bot/sms_pool/{ref_key}")
 
-            # ── Photo pool (unmatched) ──
             photo_pool = db_get("bot/photo_pool") or {}
             for ref_key, entry in list(photo_pool.items()):
                 if not isinstance(entry, dict): continue
@@ -1914,7 +1965,7 @@ def cleanup_loop():
         except Exception as e:
             print(f"Cleanup error: {e}")
 
-        time.sleep(24 * 60 * 60)  # ቀን 1 ጊዜ ይሰራል
+        time.sleep(24 * 60 * 60)
 
 threading.Thread(target=cleanup_loop, daemon=True).start()
 
