@@ -1984,6 +1984,31 @@ app.get('/all-balances', async (req, res) => {
     res.json(balances);
   } catch(e) { res.json({}); }
 });
+// ══ BOT USERS ══
+app.get('/bot-users', async (req, res) => {
+  try {
+    const now = Date.now();
+    const LIVE_MS = 5 * 60 * 1000;
+    const r = await pool.query(
+      'SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false'
+    );
+    const users = {};
+    r.rows.forEach(row => {
+      const lastActivity = row.last_activity ? Number(row.last_activity) : null;
+      users[row.uid] = {
+        uid:          row.uid,
+        name:         row.display || row.uid,
+        balance:      Number(row.balance || 0),
+        last_activity: lastActivity,
+        is_live:      lastActivity !== null && (now - lastActivity) < LIVE_MS,
+        joined_at:    '',
+      };
+    });
+    res.json({ ok: true, users });
+  } catch(e) {
+    res.json({ ok: false, users: {}, msg: e.message });
+  }
+});
 // ══════════════════════════════════════════════════════════════
 // /extract-sms  —  REF + Amount extractor
 // server.js ውስጥ ሌሎች app.post/app.get routes ካሉበት ቦታ ጨምር
