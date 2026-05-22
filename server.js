@@ -1973,7 +1973,7 @@ app.post('/set-group-announce-interval', async (req, res) => {
 });
 app.get('/all-balances', async (req, res) => {
   try {
-    const r = await pool.query('SELECT uid, balance, last_activity FROM users WHERE is_bot = false');
+    const r = await pool.query('SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false');
     const balances = {};
     r.rows.forEach(row => {
       balances[row.uid] = {
@@ -2164,4 +2164,35 @@ setInterval(async () => {
     console.error('❌ Auto-release error:', e.message);
   }
 }, 30 * 1000);
+// ══ DELETE USER ══
+app.post('/delete-user', async (req, res) => {
+  try {
+    const { uid } = req.body;
+    if (!uid) return res.json({ ok: false, msg: 'uid missing' });
+
+    await pool.query('DELETE FROM users WHERE uid=$1', [uid]);
+
+    const keys = [
+      `users/${uid}`,
+      `temp/${uid}`,
+      `botstate_${uid}`,
+      `tempwd_${uid}_amount`,
+      `tempwd_${uid}_method`,
+      `referrals/${uid}`,
+      `displayNames/${uid}`,
+    ];
+    for (const k of keys) {
+      await pool.query('DELETE FROM game_state WHERE key=$1', [k]);
+      await pool.query('DELETE FROM game_state WHERE key LIKE $1', [k + '/%']);
+    }
+
+    await pool.query('DELETE FROM notifications WHERE uid=$1', [uid]);
+
+    console.log(`🗑️ User deleted: ${uid}`);
+    res.json({ ok: true });
+  } catch(e) {
+    console.error('❌ delete-user error:', e.message);
+    res.json({ ok: false, msg: e.message });
+  }
+});
 app.listen(process.env.PORT || 3000, () => console.log('🚀 Server running!'));
