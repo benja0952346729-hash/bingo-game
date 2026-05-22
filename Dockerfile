@@ -16,4 +16,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["pm2-runtime", "start", "ecosystem.config.js", "--env", "production"]
+CMD ["sh", "-c", "PORT=8000 node server.js & PORT=3002 node Bot.js & PORT=3001 node tts.js & PORT=10000 python3 Bot.py & wait"]
