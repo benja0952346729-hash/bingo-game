@@ -1729,7 +1729,10 @@ app.post(
           });
         } catch(e) { console.error('❌ TG photo error:', e.message); }
       }
-
+   await pool.query('UPDATE users SET balance = GREATEST(0, balance - $1) WHERE uid=$2', [amount, uid]);
+const balR = await pool.query('SELECT balance FROM users WHERE uid=$1', [uid]);
+const newBal = balR.rows[0]?.balance || 0;
+broadcast({ type: 'balance', uid, balance: newBal });
       allWd[key].status = 'approved';
       await setState('bot/withdrawals', allWd);
       await updateAnalytics('totalWithdrawals', amount);
