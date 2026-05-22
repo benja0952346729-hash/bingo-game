@@ -2115,7 +2115,10 @@ app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
       r.on('data', c => d += c);
       r.on('end', () => res.json({ status: 'ok' }));
     });
-    r2.on('error', () => res.json({ status: 'ok' }));
+    r2.on('error', (e) => {
+      console.log('❌ Bot.py connection error:', e.message);
+      res.json({ status: 'ok' });
+    });
     r2.write(body);
     r2.end();
   } catch(e) {
