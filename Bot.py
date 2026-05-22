@@ -29,7 +29,7 @@ from flask import Flask, request as flask_request, jsonify
 BOT_TOKEN  = os.environ.get("BOT_TOKEN", "")
 ADMIN_ID   = 6883208728
 WEBAPP_URL = "https://game-owkt.onrender.com"
-SERVER = "https://admin-panel-0cmo.onrender.com"
+SERVER = "https://bingo-bingo-bingo.onrender.com"
 
 MIN_WITHDRAWAL = 50
 
