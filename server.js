@@ -324,8 +324,8 @@ app.get('/withdrawals', async (req, res) => {
   try {
     const r = await pool.query("SELECT value FROM game_state WHERE key='bot/withdrawals'");
     const data = r.rows.length ? JSON.parse(r.rows[0].value) : {};
-    res.json({ withdrawals: data });
-  } catch(e) { res.json({ withdrawals: {} }); }
+    res.json({ withdrawals: data, serverTime: Date.now() });
+  } catch(e) { res.json({ withdrawals: {}, serverTime: Date.now() }); }
 });
 
 app.get('/agents', async (req, res) => {
@@ -2133,24 +2133,35 @@ app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
     res.json({ status: 'ok' });
   }
 });
-// ── Auto-release expired locks ──
+// ── Auto-release expired locks (server-side) ──
 setInterval(async () => {
-  const LOCK_MS = 3 * 60 * 1000; // 3 ደቂቃ
-  const now = Date.now();
-  
-  const withdrawals = await dbGet('bot/withdrawals') || {};
-  
-  for (const [key, wd] of Object.entries(withdrawals)) {
-    if (wd.status !== 'accepted') continue;
-    if (!wd.acceptedAt) continue;
+  try {
+    const LOCK_MS = 3 * 60 * 1000;
+    const now = Date.now();
     
-    // 3 ደቂቃ ካለፈ — auto release
-    if (now - wd.acceptedAt > LOCK_MS) {
-      await dbSet(`bot/withdrawals/${key}/status`, 'pending');
-      await dbSet(`bot/withdrawals/${key}/acceptedBy`, null);
-      await dbSet(`bot/withdrawals/${key}/acceptedAt`, null);
-      console.log(`⏰ Auto-released: ${key}`);
+    const r = await pool.query(
+      "SELECT value FROM game_state WHERE key='bot/withdrawals'"
+    );
+    const withdrawals = r.rows.length ? JSON.parse(r.rows[0].value) : {};
+    
+    let changed = false;
+    for (const [key, wd] of Object.entries(withdrawals)) {
+      if (wd.status !== 'accepted') continue;
+      if (!wd.acceptedAt) continue;
+      if (now - wd.acceptedAt > LOCK_MS) {
+        withdrawals[key].status = 'pending';
+        withdrawals[key].acceptedBy = null;
+        withdrawals[key].acceptedAt = null;
+        changed = true;
+        console.log(`⏰ Auto-released: ${key}`);
+      }
     }
+    
+    if (changed) {
+      await setState('bot/withdrawals', withdrawals);
+    }
+  } catch(e) {
+    console.error('❌ Auto-release error:', e.message);
   }
-}, 30 * 1000); 
+}, 30 * 1000);
 app.listen(process.env.PORT || 3000, () => console.log('🚀 Server running!'));
