@@ -180,7 +180,7 @@ const SOUNDS_SERVER = 'http://localhost:3001';
 app.get('/tts/winner-announce', async (req, res) => {
   try {
     const response = await new Promise((resolve, reject) => {
-      https.get(`${SOUNDS_SERVER}/tts/winner-announce`, (r) => {
+      http.get(`${SOUNDS_SERVER}/tts/winner-announce`, (r) => {
         const chunks = [];
         r.on('data', chunk => chunks.push(chunk));
         r.on('end', () => resolve({ buffer: Buffer.concat(chunks) }));
@@ -212,7 +212,7 @@ app.get('/tts/congrats/:prize', async (req, res) => {
 app.get('/tts/bingo', async (req, res) => {
   try {
     const response = await new Promise((resolve, reject) => {
-      https.get(`${SOUNDS_SERVER}/tts/bingo`, (r) => {
+      http.get(`${SOUNDS_SERVER}/tts/bingo`, (r) => {
         const chunks = [];
         r.on('data', chunk => chunks.push(chunk));
         r.on('end', () => resolve({ buffer: Buffer.concat(chunks) }));
@@ -230,7 +230,7 @@ app.get('/tts/number/:n', async (req, res) => {
     return res.status(400).json({ error: 'Invalid number' });
   try {
     const response = await new Promise((resolve, reject) => {
-      https.get(`${SOUNDS_SERVER}/tts/number/${n}`, (r) => {
+      http.get(`${SOUNDS_SERVER}/tts/number/${n}`, (r) => {
         const chunks = [];
         r.on('data', chunk => chunks.push(chunk));
         r.on('end', () => resolve({ buffer: Buffer.concat(chunks), type: r.headers['content-type'] }));
