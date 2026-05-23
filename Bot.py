@@ -1777,6 +1777,16 @@ def handle_callback(c):
                 f"📝 User ጠየቀ: <b>{req_amount} ብር</b>\n\n"
                 f"SMS amount አልደረሰም። ትክክለኛ amount ያረጋግጡ ከዚያ:\n"
                 f"<code>/givebalance {u_id} [amount]</code>")
+            # ── Ref save — ድጋሚ screenshot ሸወዳ ይቆማል ──
+            if ref:
+                save_ref(ref, u_id, 0)
+            # ── Buttons አጥፋ ──
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=None)
+            except: pass
             return
 
         # ── Ref save — ድጋሚ screenshot ሸወዳ ይቆማል ──
