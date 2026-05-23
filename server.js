@@ -2195,10 +2195,12 @@ app.post('/delete-user', async (req, res) => {
     const { uid } = req.body;
     if (!uid) return res.json({ ok: false, msg: 'uid missing' });
     // ── Secret key check ──
-    const secret = req.body.secret || req.headers['x-secret'];
-    if (secret !== process.env.ADMIN_SECRET) {
-      return res.json({ ok: false, msg: 'Unauthorized' });
-    }
+    const secret = req.body.secret;
+const config = await pool.query("SELECT value FROM game_state WHERE key='adminConfig'");
+const adminPass = JSON.parse(config.rows[0]?.value || '{}').loginPassword;
+if (!secret || secret !== adminPass) {
+  return res.json({ ok: false, msg: 'Unauthorized' });
+}
 
     await pool.query('DELETE FROM users WHERE uid=$1', [uid]);
 
