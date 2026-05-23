@@ -1280,7 +1280,7 @@ async function fetchWinners() {
         </div>
         <div class="winner-right">
           <div class="wprize">${w.prize} ብር</div>
-          <div class="wtime">${new Date(w.time).toLocaleString()}</div>
+          <div class="wtime">${w.time ? new Date(Number(w.time)).toLocaleString() : '—'}</div>
         </div>
       </div>`).join('');
   } catch(e) { list.innerHTML = '<div style="color:var(--red);text-align:center;padding:20px;">❌ Error</div>'; }
@@ -1912,4 +1912,4 @@ setInterval(fetchState, 4000);
       }
     </script>
   </body>
-      </html>
+  </html>
