@@ -769,6 +769,7 @@ async function doLogin() {
     if (input === d.loginPassword) {
       document.getElementById('loginScreen').style.display = 'none';
       sessionStorage.setItem('adminAuth', 'true');
+      sessionStorage.setItem('adminPass', input);
     } else {
       document.getElementById('loginError').style.display = 'block';
     }
@@ -1050,12 +1051,76 @@ async function fetchHealth() {
   } catch(e) { grid.innerHTML = '<div style="color:var(--red);text-align:center;padding:20px;">❌ Server unreachable</div>'; }
 }
 
+// 1) Notification permission ጠይቅ
+async function requestNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission();
+  }
+}
+requestNotifPermission();
+
+// 2) Sound
+function playWithdrawalSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1); gain1.connect(ctx.destination);
+    osc1.frequency.setValueAtTime(880, ctx.currentTime);
+    osc1.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+    gain1.gain.setValueAtTime(0.4, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc1.start(ctx.currentTime); osc1.stop(ctx.currentTime + 0.25);
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2); gain2.connect(ctx.destination);
+    osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.18);
+    osc2.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.35);
+    gain2.gain.setValueAtTime(0.35, ctx.currentTime + 0.18);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    osc2.start(ctx.currentTime + 0.18); osc2.stop(ctx.currentTime + 0.45);
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.connect(gain3); gain3.connect(ctx.destination);
+    osc3.frequency.setValueAtTime(1320, ctx.currentTime + 0.36);
+    gain3.gain.setValueAtTime(0.3, ctx.currentTime + 0.36);
+    gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+    osc3.start(ctx.currentTime + 0.36); osc3.stop(ctx.currentTime + 0.7);
+  } catch(e) {}
+}
+
+// 3) Full alert
+function triggerWithdrawalAlert(amount, uid) {
+  playWithdrawalSound();
+  if ('vibrate' in navigator) navigator.vibrate([300, 100, 300, 100, 300]);
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'WITHDRAWAL_ALERT', amount, uid });
+  } else if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('💸 New Withdrawal!', { body: `👤 ${uid} — ${amount} ብር`, icon: '/file_0000000042e471f8a7b56862e140b309.png' });
+  }
+  let flashCount = 0;
+  const origTitle = document.title;
+  const flashInterval = setInterval(() => {
+    document.title = flashCount % 2 === 0 ? '💸 NEW WITHDRAWAL!' : origTitle;
+    if (++flashCount > 10) { clearInterval(flashInterval); document.title = origTitle; }
+  }, 600);
+}
+
+// 4) Track + badge
+let _lastWdCount = -1;
 async function fetchWithdrawalBadge() {
   try {
     const r = await fetch(`${BASE}/withdrawals`);
     const d = await r.json();
     const keys = Object.keys(d.withdrawals || {}).filter(k => d.withdrawals[k].status === 'pending');
-    document.getElementById('wdTabBadge').textContent = keys.length > 0 ? ` (${keys.length})` : '';
+    const count = keys.length;
+    document.getElementById('wdTabBadge').textContent = count > 0 ? ` (${count})` : '';
+    if (_lastWdCount === -1) { _lastWdCount = count; return; } // first load — silent
+    if (count > _lastWdCount) {
+      const newOnes = keys.slice(0, count - _lastWdCount);
+      newOnes.forEach(k => { const w = d.withdrawals[k]; triggerWithdrawalAlert(w.amount, w.user_id); });
+    }
+    _lastWdCount = count;
   } catch(e) {}
 }
 
@@ -1640,36 +1705,24 @@ async function saveConfig() {
 // ══ USERS ══
 let allUsersData = [];
 let currentUserFilter = 'all';
-
 async function fetchUsers() {
   const list = document.getElementById('usersList');
   if (!list) return;
   if (!allUsersData.length) list.innerHTML = '<div class="loading">Loading...</div>';
   try {
-    const [gsRes, balRes] = await Promise.all([
-  fetch(`${BASE}/game-state`),
-  fetch(`${BASE}/all-balances`)
-]);
-const gs = await gsRes.json();
-const balances = await balRes.json();
-
-const displayNames = gs['displayNames'] || {};
-const userMeta = gs['users'] || {};
+const r = await fetch(`${BASE}/bot-users`);
+    const d = await r.json();
+    const users = d.users || {};
     const now = Date.now();
-    const LIVE_THRESHOLD = 5 * 60 * 1000;
 
-    allUsersData = Object.keys(balances).map(uid => {
-  const balance = Number(balances[uid]?.balance ?? 0);
-  const lastActivity = balances[uid]?.last_activity ?? null;
-  const isLive = lastActivity !== null && (now - lastActivity) < LIVE_THRESHOLD;
-  return { 
-    uid, 
-    name: balances[uid]?.display || displayNames[uid] || uid, 
-    balance, 
-    lastActivity, 
-    isLive 
-  };
-});
+    allUsersData = Object.values(users).map(u => ({
+      uid:          u.uid,
+      name:         u.name || u.uid,
+      balance:      Number(u.balance || 0),
+      lastActivity: u.last_activity ? Number(u.last_activity) : null,
+      isLive:       u.is_live || false,
+      joinedAt:     u.joined_at || '',
+    }));
 
     const total = allUsersData.length;
     const live = allUsersData.filter(u => u.isLive).length;
@@ -1708,7 +1761,7 @@ function renderUsers() {
   else if (currentUserFilter === 'zero') users = users.filter(u => u.balance <= 0);
   if (!users.length) { list.innerHTML = '<div class="empty">ምንም user አልተገኘም</div>'; return; }
   if (currentUserFilter !== 'rich') {
-    users.sort((a,b) => { if(a.isLive&&!b.isLive) return -1; if(!a.isLive&&b.isLive) return 1; return b.balance-a.balance; });
+    users.sort((a,b) => (b.lastActivity||0) - (a.lastActivity||0));
   }
   const now = Date.now();
   function timeAgo(ms) {
@@ -1736,7 +1789,7 @@ function renderUsers() {
       </div>
       <div style="margin-top:8px;display:flex;gap:6px;">
         <button class="small-btn s-gold" onclick="quickGive('${u.uid}','${u.name}')">💰 Give</button>
-        <button class="small-btn s-cyan" onclick="document.getElementById('updateUid').value='${u.uid}';switchPage('home');showToast('✅ ID copied','info')">🔧 Edit</button>
+        <button class="small-btn s-red" onclick="deleteUser('${u.uid}','${u.name}')">🗑️ Delete</button>
       </div>
     </div>
   `).join('');
@@ -1753,6 +1806,39 @@ function quickGive(uid, name) {
     if(d.ok){showToast(`✅ ${amount} ብር ተሰጠ!`,'success');fetchUsers();}
     else showToast('❌ Error','error');
   }).catch(()=>showToast('❌ Connection error','error'));
+}
+async function deleteUser(uid, name) {
+  if (!confirm(`⚠️ ${name} ሙሉ ለሙሉ ይሰረዛል!\n\nBot + DB ሁሉም ይጠፋል። እርግጠኛ ነህ?`)) return;
+  try {
+    const r = await fetch(`${BASE}/delete-user`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ uid, secret: sessionStorage.getItem('adminPass') })
+    });
+    const d = await r.json();
+    if (!d.ok) return showToast('❌ ' + (d.msg || 'Error'), 'error');
+
+    showToast(`✅ ${name} ተሰርዟል!`, 'success');
+    allUsersData = allUsersData.filter(u => u.uid !== uid);
+    renderUsers();
+  } catch(e) {
+    showToast('❌ Connection error', 'error');
+  }
+}
+async function saveAccounts() {
+  const cbe = document.getElementById('cbeAccount').value.trim();
+  const telebirr = document.getElementById('telebirrAccount').value.trim();
+  if (!cbe && !telebirr) return showToast('❌ Account number ያስገባ!', 'error');
+  try {
+    const r = await fetch(`${BASE}/save-accounts`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ cbe, telebirr })
+    });
+    const d = await r.json();
+    if (d.ok) showToast('✅ Accounts saved!', 'success');
+    else showToast('❌ Error', 'error');
+  } catch(e) { showToast('❌ Connection error', 'error'); }
 }
 function showToast(msg, type='') {
   const t = document.getElementById('toast');
@@ -1791,4 +1877,4 @@ setInterval(fetchState, 4000);
       }
     </script>
   </body>
-  </html>
+          </html>
