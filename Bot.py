@@ -9,6 +9,9 @@
 ║  FIXED: Outgoing SMS (transferred/sent/paid) ignore             ║
 ║  FIXED: Approved pid added to _cancelled_pids (no false timeout)║
 ║  FIXED: Admin approve saves ref + removes buttons               ║
+║  FIXED: Admin reject saves ref — no re-use of screenshot        ║
+║  NEW: /bot-users endpoint — Admin HTML users page               ║
+║  NEW: /delete-user endpoint — ሙሉ user ይሰርዛል                   ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -238,6 +241,94 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def home():
     return "Bingo Bot is running"
+
+# ══════════════════════════════════════════
+# BOT USERS ENDPOINT — Admin HTML ለ users page
+# ══════════════════════════════════════════
+@flask_app.route("/bot-users", methods=["GET"])
+def bot_users():
+    try:
+        display_names = db_get("displayNames") or {}
+        users_meta    = db_get("users") or {}
+        now_ts = datetime.now().timestamp() * 1000
+        LIVE_MS = 5 * 60 * 1000  # 5 ደቂቃ
+
+        result = {}
+        for uid, name in display_names.items():
+            if not str(uid).isdigit():
+                continue
+            try:
+                bal_r = requests.get(f"{SERVER}/get-balance", params={"uid": uid}, timeout=5)
+                balance = int(float(bal_r.json().get("balance", 0) or 0))
+            except:
+                balance = 0
+
+            meta = users_meta.get(uid) or {}
+            last_activity = meta.get("last_activity") or meta.get("lastActivity") or None
+            is_live = False
+            if last_activity:
+                try:
+                    is_live = (now_ts - float(last_activity)) < LIVE_MS
+                except:
+                    is_live = False
+
+            result[uid] = {
+                "uid":          uid,
+                "name":         str(name),
+                "balance":      balance,
+                "last_activity": last_activity,
+                "is_live":      is_live,
+                "joined_at":    meta.get("joined_at", ""),
+            }
+
+        return jsonify({"ok": True, "users": result})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+# ══════════════════════════════════════════
+# DELETE USER ENDPOINT — Bot DB ላይ ሙሉ ለሙሉ ይሰርዛል
+# ══════════════════════════════════════════
+@flask_app.route("/delete-user", methods=["POST"])
+def delete_user():
+    try:
+        data = flask_request.get_json(force=True, silent=True) or {}
+        uid  = str(data.get("uid", "")).strip()
+        if not uid or not uid.isdigit():
+            return jsonify({"ok": False, "msg": "Invalid uid"}), 400
+
+        # ── ሁሉም bot data ይሰርዛሉ ──
+        db_delete(f"displayNames/{uid}")
+        db_delete(f"users/{uid}")
+        db_delete(f"temp/{uid}")
+        db_delete(f"botstate_{uid}")
+        db_delete(f"referrals/{uid}")
+        db_delete(f"tempwd_{uid}_amount")
+        db_delete(f"tempwd_{uid}_method")
+
+        # ── In-memory cache ያጸዳ ──
+        cache_del(f"botstate_{uid}")
+        cache_del(f"temp_{uid}")
+        cache_del(f"tempwd_{uid}_amount")
+        cache_del(f"tempwd_{uid}_method")
+
+        # ── Server.js balance ሰርዝ ──
+        try:
+            requests.post(f"{SERVER}/delete-user",
+                json={"uid": uid}, timeout=5)
+        except:
+            pass
+
+        # ── Admin notify ──
+        try:
+            bot.send_message(ADMIN_ID,
+                f"🗑️ <b>User ተሰርዟል</b>\n👤 <code>{uid}</code>")
+        except:
+            pass
+
+        print(f"DELETE USER: {uid}")
+        return jsonify({"ok": True, "msg": f"User {uid} deleted"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
 # ══════════════════════════════════════════
 # SMS WEBHOOK
@@ -1123,6 +1214,42 @@ def cmd_stats(m):
     except Exception as e:
         bot.send_message(m.chat.id, f"❌ Stats error: {e}")
 
+@bot.message_handler(commands=["804"])
+def cmd_804(m):
+    if m.chat.id != ADMIN_ID: return
+    try:
+        h  = requests.get(f"{SERVER}/health", timeout=5).json()
+        gs = requests.get(f"{SERVER}/game-state", timeout=5).json()
+
+        collected  = float(gs.get('analytics/totalCollected', 0) or 0)
+        paid_out   = float(gs.get('analytics/totalPaidOut', 0) or 0)
+        profit     = float(gs.get('analytics/houseProfit', 0) or 0)
+        total_dep  = gs.get('analytics/totalDeposits', 0) or 0
+        total_wd   = gs.get('analytics/totalWithdrawals', 0) or 0
+
+        try:
+            bal_r = requests.get(f"{SERVER}/all-balances", timeout=5)
+            balances = bal_r.json()
+            total_user_bal = sum(int(float(v.get('balance', 0) or 0)) for v in balances.values())
+        except:
+            total_user_bal = 0
+
+        bot.send_message(m.chat.id,
+            f"📊 <b>Report — {datetime.now().strftime('%Y-%m-%d %H:%M')}</b>\n\n"
+            f"👥 Users: {h.get('users', 0)}\n"
+            f"🏆 Winners: {h.get('winners', 0)}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💳 Total Deposits: {int(float(total_dep))} ብር\n"
+            f"🏧 Total Withdrawals: {int(float(total_wd))} ብር\n"
+            f"💼 Users Total Balance: {total_user_bal} ብር\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💰 Game Collected: {int(collected)} ብር\n"
+            f"💸 Game Paid Out: {int(paid_out)} ብር\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📈 Profit: {int(profit)} ብር")
+    except Exception as e:
+        bot.send_message(m.chat.id, f"❌ Error: {e}")
+
 @bot.message_handler(commands=["pending"])
 def show_pending(m):
     if m.chat.id != ADMIN_ID: return
@@ -1901,14 +2028,33 @@ def daily_report_loop():
         try:
             h  = requests.get(f"{SERVER}/health", timeout=5).json()
             gs = requests.get(f"{SERVER}/game-state", timeout=5).json()
+            collected     = float(gs.get('analytics/totalCollected', 0) or 0)
+            paid_out      = float(gs.get('analytics/totalPaidOut', 0) or 0)
+            profit        = float(gs.get('analytics/houseProfit', 0) or 0)
+            total_dep     = gs.get('analytics/totalDeposits', 0) or 0
+            total_wd      = gs.get('analytics/totalWithdrawals', 0) or 0
+
+            # ── Total user balance ──
+            try:
+                bal_r = requests.get(f"{SERVER}/all-balances", timeout=5)
+                balances = bal_r.json()
+                total_user_bal = sum(int(float(v.get('balance', 0) or 0)) for v in balances.values())
+            except:
+                total_user_bal = 0
+
             bot.send_message(ADMIN_ID,
                 f"📊 <b>Daily Report — {datetime.now().strftime('%Y-%m-%d')}</b>\n\n"
                 f"👥 Users: {h.get('users', 0)}\n"
                 f"🏆 Winners: {h.get('winners', 0)}\n"
-                f"💰 Collected: {gs.get('analytics/totalCollected', 0)} ብር\n"
-                f"💸 Paid Out: {gs.get('analytics/totalPaidOut', 0)} ብር\n"
-                f"🏧 Withdrawals: {gs.get('analytics/totalWithdrawals', 0)} ብር\n"
-                f"📈 Profit: {gs.get('analytics/totalProfit', 0)} ብር")
+                f"━━━━━━━━━━━━━━\n"
+                f"💳 Total Deposits: {int(float(total_dep))} ብር\n"
+                f"🏧 Total Withdrawals: {int(float(total_wd))} ብር\n"
+                f"💼 Users Total Balance: {total_user_bal} ብር\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"💰 Game Collected: {int(collected)} ብር\n"
+                f"💸 Game Paid Out: {int(paid_out)} ብር\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"📈 Profit: {int(profit)} ብር")
         except Exception as e:
             print(f"Daily report error: {e}")
 
