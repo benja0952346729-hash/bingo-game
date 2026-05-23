@@ -2,7 +2,7 @@
   "name": "Bingo Pro Admin",
   "short_name": "Bingo Admin",
   "description": "Bingo Pro Admin Panel",
-  "start_url": "https://benja0952346729-hash.github.io/bingo-game/index.html",
+  "start_url": "https://benja0952346729-hash.github.io/bingo-game/",
   "display": "standalone",
   "background_color": "#0a0c10",
   "theme_color": "#f5c518",
