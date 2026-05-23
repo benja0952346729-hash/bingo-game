@@ -1527,16 +1527,24 @@ async function fetchAgents() {
   const list = document.getElementById('agentsList');
   list.innerHTML = '<div class="loading">Loading...</div>';
   try {
-    const [agentsData, wData] = await Promise.all([
-      fetch(`${BASE}/agents`).then(r => r.json()),
-      fetch(`${BASE}/withdrawals`).then(r => r.json())
-    ]);
+    const [agentsData, wData, statusData] = await Promise.all([
+  fetch(`${BASE}/agents`).then(r => r.json()),
+  fetch(`${BASE}/withdrawals`).then(r => r.json()),
+  fetch(`${BASE}/agent-status`).then(r => r.json()).catch(() => ({ agents: {} }))
+]);
+const agentLive = statusData.agents || {};
     const allWD = wData.withdrawals || {};
     const names = Object.keys(agentsData);
     if (!names.length) { list.innerHTML = '<div class="empty">ምንም agent አልተጨመረም</div>'; return; }
     const days = getLast5Days();
     list.innerHTML = names.map(name => {
       const info = agentsData[name];
+      const lv = agentLive[name] || {};
+const st = lv.status || 'offline';
+const lastSeen = lv.lastSeen
+  ? new Date(lv.lastSeen).toLocaleTimeString('am-ET', {hour:'2-digit', minute:'2-digit'})
+  : '—';
+const activeReq = lv.activeRequests || 0;
       const myTx = Object.values(allWD).filter(w => w.acceptedBy === name && (w.status === 'approved' || w.status === 'rejected'));
       const totalApprAmt = myTx.filter(w => w.status === 'approved').reduce((s,w) => s+(w.amount||0), 0);
       const totalApprCnt = myTx.filter(w => w.status === 'approved').length;
@@ -1551,12 +1559,18 @@ async function fetchAgents() {
       const cid = 'ac-' + name.replace(/[^a-zA-Z0-9]/g, '_');
       return `
 <div class="agent-card" id="${cid}">
+<div style="padding:8px 16px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+  <div style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:${st==='online'?'#00e676':st==='away'?'#ff9800':'#5a6070'};${st==='online'?'box-shadow:0 0 7px #00e676;':''}"></div>
+  <span style="font-size:11px;font-weight:700;color:${st==='online'?'#00e676':st==='away'?'#ff9800':'#5a6070'};letter-spacing:1px;">${st.toUpperCase()}</span>
+  <span style="font-size:11px;color:var(--muted);">🕐 ${lastSeen}</span>
+  <span style="font-size:11px;color:var(--muted);">📋 ${activeReq} active</span>
+</div>
   <div class="agent-card-header" onclick="toggleAgent('${cid}')">
     <div class="agent-name-row">
       <div class="agent-avatar">🕵️</div>
       <div>
         <div class="agent-name">${name}</div>
-        <div class="agent-id-tag">ID: ${info.id_number || '—'}</div>
+        <div class="agent-id-tag">ID: ${info.id_number || '—'} · Code: ${info.code || '—'}</div>
       </div>
     </div>
     <div class="agent-summary">
@@ -1643,12 +1657,13 @@ async function addAgent() {
   try {
     const r = await fetch(`${BASE}/add-agent`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, id_number }) });
     const d = await r.json();
-    if (d.ok) { showToast('✅ Agent added!', 'success'); document.getElementById('agentName').value=''; document.getElementById('agentId').value=''; fetchAgents(); }
+    if (d.ok) { showToast(`✅ Agent added! Code: ${d.code}`, 'success'); document.getElementById('agentName').value=''; document.getElementById('agentId').value=''; fetchAgents(); }
     else showToast('❌ Error', 'error');
   } catch(e) { showToast('❌ Connection error', 'error'); }
 }
 
 async function deleteAgent(name) {
+  if (!confirm(`⚠️ ${name} ይሰረዛል! እርግጠኛ ነህ?`)) return;
   try {
     const r = await fetch(`${BASE}/delete-agent`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
     const d = await r.json();
@@ -1904,6 +1919,18 @@ setInterval(fetchState, 4000);
       setInterval(fetchWithdrawalStatus, 10000);
       setInterval(() => { if(currentPage === 'promotions') fetchPromos(); }, 5000);
       setInterval(() => { if(currentPage === 'users') fetchUsers(); }, 6000);
+      // ── SSE for real-time agent status ──
+(function() {
+  const src = new EventSource('https://bingo-bingo-bingo.onrender.com/events');
+  src.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'agent_status_update') {
+        if (currentPage === 'agents') fetchAgents();
+      }
+    } catch {}
+  };
+})();
     </script>
 
     <script>
@@ -1912,4 +1939,4 @@ setInterval(fetchState, 4000);
       }
     </script>
   </body>
-  </html>
+          </html>
