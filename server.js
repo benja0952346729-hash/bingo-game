@@ -2194,6 +2194,11 @@ app.post('/delete-user', async (req, res) => {
   try {
     const { uid } = req.body;
     if (!uid) return res.json({ ok: false, msg: 'uid missing' });
+    // ── Secret key check ──
+    const secret = req.body.secret || req.headers['x-secret'];
+    if (secret !== process.env.ADMIN_SECRET) {
+      return res.json({ ok: false, msg: 'Unauthorized' });
+    }
 
     await pool.query('DELETE FROM users WHERE uid=$1', [uid]);
 
