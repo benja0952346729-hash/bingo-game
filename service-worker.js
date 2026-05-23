@@ -1,9 +1,9 @@
-const CACHE_NAME = 'bingo-admin-v2';
+const CACHE_NAME = 'bingo-admin-v3';
 
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
+  '/bingo-game/',
+  '/bingo-game/index.html',
+  '/bingo-game/manifest.json',
   'https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+Ethiopic:wght@400;600;700&display=swap'
 ];
 
@@ -49,7 +49,9 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => caches.match('/') || new Response('Offline', { status: 503 }));
+      }).catch(() => {
+        return caches.match('/bingo-game/index.html') || new Response('Offline', { status: 503 });
+      });
     })
   );
 });
@@ -60,8 +62,8 @@ self.addEventListener('message', event => {
     const { amount, uid } = event.data;
     self.registration.showNotification('💸 New Withdrawal Request!', {
       body: `👤 User: ${uid}\n💰 Amount: ${amount} ብር`,
-      icon: '/file_000000009bc472468fa8bc6a9171053f.png',
-      badge: '/file_000000009bc472468fa8bc6a9171053f.png',
+      icon: '/bingo-game/file_000000009bc472468fa8bc6a9171053f.png',
+      badge: '/bingo-game/file_000000009bc472468fa8bc6a9171053f.png',
       vibrate: [300, 100, 300, 100, 300],
       tag: 'withdrawal',
       renotify: true,
@@ -81,7 +83,7 @@ self.addEventListener('notificationclick', event => {
       for (const client of clientList) {
         if (client.url && 'focus' in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow('/');
+      if (clients.openWindow) return clients.openWindow('/bingo-game/index.html');
     })
   );
 });
@@ -94,7 +96,7 @@ self.addEventListener('push', event => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'Bingo Admin', {
       body: data.body || '',
-      icon: '/file_000000009bc472468fa8bc6a9171053f.png',
+      icon: '/bingo-game/file_000000009bc472468fa8bc6a9171053f.png',
       vibrate: [200, 100, 200]
     })
   );
