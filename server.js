@@ -1712,19 +1712,19 @@ app.post(
       if (wd.acceptedBy !== agentId) return res.json({ ok: false, msg: '❌ ይህ request ያንተ አይደለም!' });
 
       const uid = String(wd.user_id);
-      const amount = wd.amount || 0;
-      const method = wd.method || 'ባንክ';
-      const account = wd.account || '—';
-      const BOT_TOKEN = process.env.BOT_TOKEN || '';
-
-      if (file && BOT_TOKEN) {
-        try {
-          const boundary = '----FormBoundary' + Date.now();
-          // Agent code ያምጣ
+const amount = wd.amount || 0;
+const method = wd.method || 'ባንክ';
+const account = wd.account || '—';
+const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const agents = JSON.parse(
   (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
 );
 const agentCode = agents[agentId]?.code || agentId;
+
+      if (file && BOT_TOKEN) {
+        try {
+          const boundary = '----FormBoundary' + Date.now();
+
 const caption = `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`;
           const body = Buffer.concat([
             Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${uid}\r\n`),
