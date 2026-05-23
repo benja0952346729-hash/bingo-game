@@ -2303,5 +2303,47 @@ function sanitizeAgents() {
 //   const msg = `data: ${JSON.stringify(data)}\n\n`;
 //   sseClients.forEach(client => client.write(msg));
 // }
+app.post('/open-bot', async (req, res) => {
+  try {
+    const { userId, type, amount } = req.body;
+    const BOT_TOKEN = process.env.BOT_TOKEN || '';
+    const startParam = type === 'withdraw' ? `withdraw_${userId}` : `deposit_${amount}`;
+    const msgText = type === 'withdraw' ? '🏧 ገንዘብ ማውጣት:' : `💰 ${amount} ብር ማስገባት:`;
+    const btnText = type === 'withdraw' ? '🏧 ገንዘብ አውጣ' : '💳 ገንዘብ አስገባ';
+
+    console.log('💳 open-bot called:', userId, type, amount);
+
+    const bodyData = JSON.stringify({
+      chat_id: userId,
+      text: msgText,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: btnText, url: `https://t.me/Firstanywharebingobot?start=${startParam}` }
+        ]]
+      }
+    });
+
+    await new Promise((resolve) => {
+      const opts = {
+        hostname: 'api.telegram.org',
+        path: `/bot${BOT_TOKEN}/sendMessage`,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) }
+      };
+      const r2 = https.request(opts, (r) => { 
+        let d = '';
+        r.on('data', c => d += c);
+        r.on('end', () => { console.log('📩 TG response:', d.slice(0,100)); resolve(); });
+      });
+      r2.on('error', resolve);
+      r2.write(bodyData); r2.end();
+    });
+
+    res.json({ ok: true });
+  } catch(e) { 
+    console.error('❌ open-bot error:', e.message);
+    res.json({ ok: false, msg: e.message }); 
+  }
+});
 
 app.listen(process.env.PORT || 3000, () => console.log('🚀 Server running!'));
