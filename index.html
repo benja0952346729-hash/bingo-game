@@ -740,6 +740,19 @@
     </div>
     <button class="main-btn btn-gold" onclick="saveAnnounceInterval()">💾 SAVE INTERVAL</button>
   </div>
+  <div class="auto-card" style="border-color:var(--purple);">
+  <div class="auto-header">
+    <div class="auto-title" style="color:var(--purple);">🔔 ALERT SOUND</div>
+  </div>
+  <div class="divider"></div>
+  <div class="speed-row" style="padding-top:14px;">
+    <span class="speed-label">Withdrawal Sound:</span>
+    <button id="soundToggleBtn" onclick="toggleSound()"
+      style="background:linear-gradient(135deg,#00c853,#1b5e20);border:none;border-radius:10px;color:#fff;font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;padding:10px 20px;cursor:pointer;letter-spacing:1px;">
+      🔊 ON
+    </button>
+  </div>
+</div>
   <div class="auto-card" style="border-color:var(--green);">
     <div class="auto-header"><div class="auto-title" style="color:var(--green);">🏦 PAYMENT ACCOUNTS</div></div>
     <div class="divider"></div>
@@ -1061,6 +1074,7 @@ requestNotifPermission();
 
 // 2) Sound
 function playWithdrawalSound() {
+  if (_soundMuted) return;
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const osc1 = ctx.createOscillator();
@@ -1840,6 +1854,27 @@ async function saveAccounts() {
     else showToast('❌ Error', 'error');
   } catch(e) { showToast('❌ Connection error', 'error'); }
 }
+let _soundMuted = localStorage.getItem('soundMuted') === 'true';
+
+function toggleSound() {
+  _soundMuted = !_soundMuted;
+  localStorage.setItem('soundMuted', _soundMuted);
+  updateSoundBtn();
+  showToast(_soundMuted ? '🔇 Sound muted!' : '🔊 Sound on!', 'info');
+}
+
+function updateSoundBtn() {
+  const btn = document.getElementById('soundToggleBtn');
+  if (!btn) return;
+  if (_soundMuted) {
+    btn.textContent = '🔇 OFF';
+    btn.style.background = 'linear-gradient(135deg,#e53935,#b71c1c)';
+  } else {
+    btn.textContent = '🔊 ON';
+    btn.style.background = 'linear-gradient(135deg,#00c853,#1b5e20)';
+  }
+}
+updateSoundBtn();
 function showToast(msg, type='') {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -1877,4 +1912,4 @@ setInterval(fetchState, 4000);
       }
     </script>
   </body>
-          </html>
+  </html>
