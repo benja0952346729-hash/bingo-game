@@ -1,0 +1,25 @@
+{
+  "name": "Bingo Pro Admin",
+  "short_name": "Bingo Admin",
+  "description": "Bingo Pro Admin Panel",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0c10",
+  "theme_color": "#f5c518",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "file_000000009bc472468fa8bc6a9171053f.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "file_000000009bc472468fa8bc6a9171053f.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
