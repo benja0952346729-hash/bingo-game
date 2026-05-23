@@ -2227,4 +2227,81 @@ if (!secret || secret !== adminPass) {
     res.json({ ok: false, msg: e.message });
   }
 });
+// ══════════════════════════════════════════════════
+//  AGENT HEARTBEAT — server.js ውስጥ ጨምር
+// ══════════════════════════════════════════════════
+
+// Memory store — agents status
+// (restart ሲሆን ይጠፋል — DB ካለህ ወደ DB ማስቀምጥ ትችላለህ)
+const agentStatus = {};  // { agentId: { status, lastSeen, activeRequests } }
+
+// ── POST /agent-heartbeat ──
+// Agent panel ይህን ይጠራል (every 20s)
+app.post('/agent-heartbeat', (req, res) => {
+  const { agentId, status, activeRequests, lastSeen } = req.body;
+
+  if (!agentId) return res.json({ ok: false, msg: 'agentId required' });
+
+  agentStatus[agentId] = {
+    status:         status || 'online',   // online | away | offline
+    activeRequests: activeRequests || 0,
+    lastSeen:       lastSeen || new Date().toISOString(),
+    updatedAt:      Date.now()
+  };
+
+  // Auto-offline — 45 ሰኮንድ heartbeat ካልመጣ offline ይሆናል
+  clearTimeout(agentStatus[agentId]._timer);
+  agentStatus[agentId]._timer = setTimeout(() => {
+    if (agentStatus[agentId]) {
+      agentStatus[agentId].status = 'offline';
+    }
+  }, 45000);
+
+  // SSE broadcast — admin panel real-time ያዘምናል
+  broadcastSSE({ type: 'agent_status_update', agents: sanitizeAgents() });
+
+  res.json({ ok: true });
+});
+
+// ── GET /agent-status ──
+// Admin panel ይህን ያነባል
+app.get('/agent-status', (req, res) => {
+  res.json({ ok: true, agents: sanitizeAgents() });
+});
+
+// _timer field አያሳይም
+function sanitizeAgents() {
+  const result = {};
+  for (const [id, data] of Object.entries(agentStatus)) {
+    result[id] = {
+      status:         data.status,
+      activeRequests: data.activeRequests,
+      lastSeen:       data.lastSeen,
+      updatedAt:      data.updatedAt
+    };
+  }
+  return result;
+}
+
+// ── broadcastSSE helper (ካልነበረ ጨምር) ──
+// SSE clients list ካለህ አስተካክል — ካልሆነ ይህን ጨምር:
+//
+// const sseClients = [];
+//
+// app.get('/events', (req, res) => {
+//   res.setHeader('Content-Type', 'text/event-stream');
+//   res.setHeader('Cache-Control', 'no-cache');
+//   res.setHeader('Connection', 'keep-alive');
+//   sseClients.push(res);
+//   req.on('close', () => {
+//     const i = sseClients.indexOf(res);
+//     if (i !== -1) sseClients.splice(i, 1);
+//   });
+// });
+//
+// function broadcastSSE(data) {
+//   const msg = `data: ${JSON.stringify(data)}\n\n`;
+//   sseClients.forEach(client => client.write(msg));
+// }
+
 app.listen(process.env.PORT || 3000, () => console.log('🚀 Server running!'));
