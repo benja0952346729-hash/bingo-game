@@ -502,6 +502,10 @@ app.post('/withdrawal-action', async (req, res) => {
 
     if (action === 'approve') {
       await updateAnalytics('totalWithdrawals', amount);
+      const agentsData2 = JSON.parse(
+  (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
+);
+const agentCode = agentsData2[allWd[key]?.acceptedBy]?.code || allWd[key]?.acceptedBy || '—';
       await pool.query(
         "UPDATE game_state SET value='0' WHERE key=$1",
         [`users/${uid}/pending_withdrawal`]
@@ -511,7 +515,7 @@ app.post('/withdrawal-action', async (req, res) => {
       const account = wd?.account || '—';
       await pool.query(
         'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-        [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}`, Date.now()]
+        [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`, Date.now()]
       );
     } else {
       await pool.query('UPDATE users SET balance=balance+$1 WHERE uid=$2', [amount, uid]);
@@ -533,9 +537,17 @@ app.post('/add-agent', async (req, res) => {
     const agents = JSON.parse(
       (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
     );
-    agents[name] = { id_number };
+    // Auto code generate — AGT-001, AGT-002...
+    const existingCodes = Object.values(agents)
+      .map(a => a.code)
+      .filter(Boolean)
+      .map(c => parseInt(c.replace('AGT-', '')))
+      .filter(n => !isNaN(n));
+    const nextNum = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
+    const code = 'AGT-' + String(nextNum).padStart(3, '0');
+    agents[name] = { id_number, code };
     await setState('agents', agents);
-    res.json({ ok: true });
+    res.json({ ok: true, code });
   } catch(e) { res.json({ ok: false }); }
 });
 
@@ -1708,7 +1720,12 @@ app.post(
       if (file && BOT_TOKEN) {
         try {
           const boundary = '----FormBoundary' + Date.now();
-          const caption = `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}`;
+          // Agent code ያምጣ
+const agents = JSON.parse(
+  (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
+);
+const agentCode = agents[agentId]?.code || agentId;
+const caption = `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`;
           const body = Buffer.concat([
             Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${uid}\r\n`),
             Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption}\r\n`),
@@ -1742,7 +1759,7 @@ await pool.query(
 
 await pool.query(
   'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-  [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}`, Date.now()]
+  [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`, Date.now()]
 );
 broadcast({ type: 'withdrawal_approved', key, uid, amount });
 res.json({ ok: true });
@@ -2258,7 +2275,7 @@ app.post('/agent-heartbeat', (req, res) => {
   }, 45000);
 
   // SSE broadcast — admin panel real-time ያዘምናል
-  broadcastSSE({ type: 'agent_status_update', agents: sanitizeAgents() });
+  broadcast({ type: 'agent_status_update', agents: sanitizeAgents() });
 
   res.json({ ok: true });
 });
