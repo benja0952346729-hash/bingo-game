@@ -2,21 +2,21 @@
   "name": "Bingo Pro Admin",
   "short_name": "Bingo Admin",
   "description": "Bingo Pro Admin Panel",
-  "start_url": "/",
+  "start_url": "https://benja0952346729-hash.github.io/bingo-game/index.html",
   "display": "standalone",
   "background_color": "#0a0c10",
   "theme_color": "#f5c518",
   "orientation": "portrait",
-  "scope": "/",
+  "scope": "https://benja0952346729-hash.github.io/bingo-game/",
   "icons": [
     {
-      "src": "file_0000000042e471f8a7b56862e140b309.png",
+      "src": "file_000000009bc472468fa8bc6a9171053f.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "file_0000000042e471f8a7b56862e140b309.png",
+      "src": "file_000000009bc472468fa8bc6a9171053f.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
