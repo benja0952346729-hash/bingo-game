@@ -1287,13 +1287,8 @@ async function autoCallNumber(speed) {
       if (neededRemaining.length <= 3 && neededRemaining.length > 0 && rand < noBotBias) {
         // Target line ን ለማጠናቀቅ needed number ይምረጥ
         n = neededRemaining[Math.floor(Math.random() * neededRemaining.length)];
-      } else if (neededRemaining.length > 3) {
-        // Target line ገና ብዙ ቁጥሮች ስላሉ — non-needed ይምረጥ
-        const nonNeeded = remaining.filter(x => !neededNums.includes(x));
-        n = nonNeeded.length > 0
-          ? nonNeeded[Math.floor(Math.random() * nonNeeded.length)]
-          : remaining[Math.floor(Math.random() * remaining.length)];
       } else {
+        // ሙሉ random — fair ነው፣ target አትጎዳ
         n = remaining[Math.floor(Math.random() * remaining.length)];
       }
 
