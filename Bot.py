@@ -9,6 +9,9 @@
 ║  FIXED: Outgoing SMS (transferred/sent/paid) ignore             ║
 ║  FIXED: Approved pid added to _cancelled_pids (no false timeout)║
 ║  FIXED: Admin approve saves ref + removes buttons               ║
+║  FIXED: Admin reject saves ref — no re-use of screenshot        ║
+║  NEW: /bot-users endpoint — Admin HTML users page               ║
+║  NEW: /delete-user endpoint — ሙሉ user ይሰርዛል                   ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -238,6 +241,94 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def home():
     return "Bingo Bot is running"
+
+# ══════════════════════════════════════════
+# BOT USERS ENDPOINT — Admin HTML ለ users page
+# ══════════════════════════════════════════
+@flask_app.route("/bot-users", methods=["GET"])
+def bot_users():
+    try:
+        display_names = db_get("displayNames") or {}
+        users_meta    = db_get("users") or {}
+        now_ts = datetime.now().timestamp() * 1000
+        LIVE_MS = 5 * 60 * 1000  # 5 ደቂቃ
+
+        result = {}
+        for uid, name in display_names.items():
+            if not str(uid).isdigit():
+                continue
+            try:
+                bal_r = requests.get(f"{SERVER}/get-balance", params={"uid": uid}, timeout=5)
+                balance = int(float(bal_r.json().get("balance", 0) or 0))
+            except:
+                balance = 0
+
+            meta = users_meta.get(uid) or {}
+            last_activity = meta.get("last_activity") or meta.get("lastActivity") or None
+            is_live = False
+            if last_activity:
+                try:
+                    is_live = (now_ts - float(last_activity)) < LIVE_MS
+                except:
+                    is_live = False
+
+            result[uid] = {
+                "uid":          uid,
+                "name":         str(name),
+                "balance":      balance,
+                "last_activity": last_activity,
+                "is_live":      is_live,
+                "joined_at":    meta.get("joined_at", ""),
+            }
+
+        return jsonify({"ok": True, "users": result})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+# ══════════════════════════════════════════
+# DELETE USER ENDPOINT — Bot DB ላይ ሙሉ ለሙሉ ይሰርዛል
+# ══════════════════════════════════════════
+@flask_app.route("/delete-user", methods=["POST"])
+def delete_user():
+    try:
+        data = flask_request.get_json(force=True, silent=True) or {}
+        uid  = str(data.get("uid", "")).strip()
+        if not uid or not uid.isdigit():
+            return jsonify({"ok": False, "msg": "Invalid uid"}), 400
+
+        # ── ሁሉም bot data ይሰርዛሉ ──
+        db_delete(f"displayNames/{uid}")
+        db_delete(f"users/{uid}")
+        db_delete(f"temp/{uid}")
+        db_delete(f"botstate_{uid}")
+        db_delete(f"referrals/{uid}")
+        db_delete(f"tempwd_{uid}_amount")
+        db_delete(f"tempwd_{uid}_method")
+
+        # ── In-memory cache ያጸዳ ──
+        cache_del(f"botstate_{uid}")
+        cache_del(f"temp_{uid}")
+        cache_del(f"tempwd_{uid}_amount")
+        cache_del(f"tempwd_{uid}_method")
+
+        # ── Server.js balance ሰርዝ ──
+        try:
+            requests.post(f"{SERVER}/delete-user",
+                json={"uid": uid}, timeout=5)
+        except:
+            pass
+
+        # ── Admin notify ──
+        try:
+            bot.send_message(ADMIN_ID,
+                f"🗑️ <b>User ተሰርዟል</b>\n👤 <code>{uid}</code>")
+        except:
+            pass
+
+        print(f"DELETE USER: {uid}")
+        return jsonify({"ok": True, "msg": f"User {uid} deleted"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
 # ══════════════════════════════════════════
 # SMS WEBHOOK
@@ -1087,6 +1178,54 @@ def cmd_balance(m):
         text += f"\n⏳ በመጠባበቅ ላይ ያለ ክፍያ: {pending_wd} ብር"
     bot.send_message(m.chat.id, text)
 
+@bot.message_handler(commands=["play"])
+def cmd_play(m):
+    uid = str(m.chat.id)
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🎮 Play",
+           web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+    bot.send_message(m.chat.id,
+        "🎮 <b>ጨዋታ ለመጀመር ይጫኑ!</b>",
+        reply_markup=kb)
+
+@bot.message_handler(commands=["deposit"])
+def cmd_deposit(m):
+    uid = str(m.chat.id)
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("💳 50 ብር",   callback_data="pay_50"),
+        InlineKeyboardButton("💳 100 ብር",  callback_data="pay_100"),
+        InlineKeyboardButton("💳 200 ብር",  callback_data="pay_200"),
+        InlineKeyboardButton("💳 500 ብር",  callback_data="pay_500"),
+        InlineKeyboardButton("💳 1000 ብር", callback_data="pay_1000"),
+    )
+    kb.add(InlineKeyboardButton("✏️ ሌላ መጠን ጻፍ", callback_data="pay_custom"))
+    bot.send_message(m.chat.id,
+        "💳 <b>ምን ያህል ብር ማስገባት ትፈልጋለህ?</b>\n\n"
+        "👇 ምረጥ ወይም ✏️ ራስህ ጻፍ:",
+        reply_markup=kb)
+
+@bot.message_handler(commands=["withdraw"])
+def cmd_withdraw(m):
+    uid = str(m.chat.id)
+    bal = get_balance(uid)
+    if bal < MIN_WITHDRAWAL:
+        bot.send_message(m.chat.id,
+            f"❌ ቀሪ ሂሳብ አናሳ!\nቢያንስ: <b>{MIN_WITHDRAWAL} ብር</b>\nቀሪ ሂሳብ: <b>{bal} ብር</b>")
+        return
+    pending_wd = db_get(f"users/{uid}/pending_withdrawal") or 0
+    if pending_wd > 0:
+        bot.send_message(m.chat.id,
+            f"⚠️ <b>አስቀድሞ በመጠባበቅ ላይ ያለ ክፍያ አለዎት!</b>\n\n"
+            f"💰 {pending_wd} ብር እየተጠበቀ ነው\n\n"
+            f"Admin ከፈቀደ በኋላ እንደገና ሞክር")
+        return
+    set_botstate(uid, "waiting_wd_amount")
+    bot.send_message(m.chat.id,
+        f"🏧 <b>ገንዘብ ማውጣት</b>\n"
+        f"💰 ቀሪ ሂሳብ: <b>{bal} ብር</b>\n\n"
+        f"ምን ያህል ብር?\n(ቢያንስ: {MIN_WITHDRAWAL} ብር)\n\nቁጥር ብቻ ላክ:")
+
 @bot.message_handler(commands=["referral"])
 def cmd_referral(m):
     _show_referral(m.chat.id, str(m.from_user.id))
@@ -1122,6 +1261,42 @@ def cmd_stats(m):
             f"🗄️ DB Size: {h.get('db_size', '?')}")
     except Exception as e:
         bot.send_message(m.chat.id, f"❌ Stats error: {e}")
+
+@bot.message_handler(commands=["804"])
+def cmd_804(m):
+    if m.chat.id != ADMIN_ID: return
+    try:
+        h  = requests.get(f"{SERVER}/health", timeout=5).json()
+        gs = requests.get(f"{SERVER}/game-state", timeout=5).json()
+
+        collected  = float(gs.get('analytics/totalCollected', 0) or 0)
+        paid_out   = float(gs.get('analytics/totalPaidOut', 0) or 0)
+        profit     = float(gs.get('analytics/houseProfit', 0) or 0)
+        total_dep  = gs.get('analytics/totalDeposits', 0) or 0
+        total_wd   = gs.get('analytics/totalWithdrawals', 0) or 0
+
+        try:
+            bal_r = requests.get(f"{SERVER}/all-balances", timeout=5)
+            balances = bal_r.json()
+            total_user_bal = sum(int(float(v.get('balance', 0) or 0)) for v in balances.values())
+        except:
+            total_user_bal = 0
+
+        bot.send_message(m.chat.id,
+            f"📊 <b>Report — {datetime.now().strftime('%Y-%m-%d %H:%M')}</b>\n\n"
+            f"👥 Users: {h.get('users', 0)}\n"
+            f"🏆 Winners: {h.get('winners', 0)}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💳 Total Deposits: {int(float(total_dep))} ብር\n"
+            f"🏧 Total Withdrawals: {int(float(total_wd))} ብር\n"
+            f"💼 Users Total Balance: {total_user_bal} ብር\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💰 Game Collected: {int(collected)} ብር\n"
+            f"💸 Game Paid Out: {int(paid_out)} ብር\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📈 Profit: {int(profit)} ብር")
+    except Exception as e:
+        bot.send_message(m.chat.id, f"❌ Error: {e}")
 
 @bot.message_handler(commands=["pending"])
 def show_pending(m):
@@ -1650,6 +1825,16 @@ def handle_callback(c):
                 f"📝 User ጠየቀ: <b>{req_amount} ብር</b>\n\n"
                 f"SMS amount አልደረሰም። ትክክለኛ amount ያረጋግጡ ከዚያ:\n"
                 f"<code>/givebalance {u_id} [amount]</code>")
+            # ── Ref save — ድጋሚ screenshot ሸወዳ ይቆማል ──
+            if ref:
+                save_ref(ref, u_id, 0)
+            # ── Buttons አጥፋ ──
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=None)
+            except: pass
             return
 
         # ── Ref save — ድጋሚ screenshot ሸወዳ ይቆማል ──
@@ -1901,14 +2086,33 @@ def daily_report_loop():
         try:
             h  = requests.get(f"{SERVER}/health", timeout=5).json()
             gs = requests.get(f"{SERVER}/game-state", timeout=5).json()
+            collected     = float(gs.get('analytics/totalCollected', 0) or 0)
+            paid_out      = float(gs.get('analytics/totalPaidOut', 0) or 0)
+            profit        = float(gs.get('analytics/houseProfit', 0) or 0)
+            total_dep     = gs.get('analytics/totalDeposits', 0) or 0
+            total_wd      = gs.get('analytics/totalWithdrawals', 0) or 0
+
+            # ── Total user balance ──
+            try:
+                bal_r = requests.get(f"{SERVER}/all-balances", timeout=5)
+                balances = bal_r.json()
+                total_user_bal = sum(int(float(v.get('balance', 0) or 0)) for v in balances.values())
+            except:
+                total_user_bal = 0
+
             bot.send_message(ADMIN_ID,
                 f"📊 <b>Daily Report — {datetime.now().strftime('%Y-%m-%d')}</b>\n\n"
                 f"👥 Users: {h.get('users', 0)}\n"
                 f"🏆 Winners: {h.get('winners', 0)}\n"
-                f"💰 Collected: {gs.get('analytics/totalCollected', 0)} ብር\n"
-                f"💸 Paid Out: {gs.get('analytics/totalPaidOut', 0)} ብር\n"
-                f"🏧 Withdrawals: {gs.get('analytics/totalWithdrawals', 0)} ብር\n"
-                f"📈 Profit: {gs.get('analytics/totalProfit', 0)} ብር")
+                f"━━━━━━━━━━━━━━\n"
+                f"💳 Total Deposits: {int(float(total_dep))} ብር\n"
+                f"🏧 Total Withdrawals: {int(float(total_wd))} ብር\n"
+                f"💼 Users Total Balance: {total_user_bal} ብር\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"💰 Game Collected: {int(collected)} ብር\n"
+                f"💸 Game Paid Out: {int(paid_out)} ብር\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"📈 Profit: {int(profit)} ብር")
         except Exception as e:
             print(f"Daily report error: {e}")
 
