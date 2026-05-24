@@ -969,9 +969,11 @@ app.post('/confirm-card', async (req, res) => {
 
     const total = Object.keys(allCards).length;
     const pct = (await getState('game/percent')) || 80;
-    const prize = Math.floor(bet * total * (pct / 100));
+    const totalBet = bet * total;
+    // 5 card ካልሞሉ prize = total bet ሙሉ፣ 5 እና በላይ ከሆነ percent ይቀነሳል
+    const prize = total < 5 ? totalBet : Math.floor(totalBet * (pct / 100));
     await setState('game/prize', prize);
-    await setState('game/total', bet * total);
+    await setState('game/total', totalBet);
 
     await updateAnalytics('totalCollected', bet);
 
@@ -1117,23 +1119,6 @@ async function startAutoCountdown() {
 async function startAutoGame() {
   if (!autoModeOn) return;
   try {
-    // ── Real players ቁጥር ይቁጠር ──
-    const allCards = (await getState('game/confirmedNumbers')) || {};
-    const usersSnap = await pool.query('SELECT uid, is_bot FROM users');
-    const allUsers = {};
-    usersSnap.rows.forEach(r => { allUsers[r.uid] = r.is_bot; });
-
-    const realPlayerCount = Object.values(allCards)
-      .filter(uid => !allUsers[uid]).length;
-
-    // ── 5 real players ካልሞሉ countdown ይደገማል ──
-    if (realPlayerCount < 5) {
-      console.log(`⚠️ Real players: ${realPlayerCount}/5 — countdown ይደገማል`);
-      broadcast({ type: 'waiting_players', current: realPlayerCount, needed: 5 });
-      await startAutoCountdown();
-      return;
-    }
-
     calledNumbers = [];
     await setState('game/countdown', { active: false });
     await setState('game/calledNumbers', []);
@@ -1146,6 +1131,15 @@ async function startAutoGame() {
 
     const callSpeed = (await getState('autoMode/callSpeed')) || 6000;
     await addBotsIfNeeded();
+
+    // ── cards ሙሉ ለሙሉ 0 ከሆነ → countdown ይደገማል ──
+    const currentCards = (await getState('game/confirmedNumbers')) || {};
+    if (Object.keys(currentCards).length === 0) {
+      console.log('⚠️ Cards 0 ነው — countdown ይደገማል');
+      broadcast({ type: 'waiting_players', current: 0, needed: 1 });
+      await startAutoCountdown();
+      return;
+    }
 
     setTimeout(() => { autoCallNumber(callSpeed); }, 2000);
   } catch(e) {
@@ -1161,8 +1155,9 @@ async function addBotsIfNeeded() {
 
     const minCards = (await getState('smartBot/minCards')) || 5;
     const allCards = (await getState('game/confirmedNumbers')) || {};
-    const realPlayerCount = Object.keys(allCards).length;
-    const botsNeeded = Math.max(0, minCards - realPlayerCount);
+
+    const totalCards = Object.keys(allCards).length;
+    const botsNeeded = Math.max(0, minCards - totalCards);
     if (botsNeeded === 0) return;
 
     const bet = (await getState('game/bet')) || 0;
@@ -1185,7 +1180,7 @@ async function addBotsIfNeeded() {
     await setState('game/confirmedNumbers', allCards);
     const total = Object.keys(allCards).length;
     const newTotal = bet * total;
-    const newPrize = Math.floor(newTotal * (pct / 100));
+    const newPrize = total < 5 ? newTotal : Math.floor(newTotal * (pct / 100));
     await setState('game/prize', newPrize);
     await setState('game/total', newTotal);
     await updateAnalytics('botBet', bet * botsNeeded);
@@ -1230,7 +1225,8 @@ async function autoCallNumber(speed) {
   const botBetsTotal  = bet * botCards.length;
 
   const totalCards = Object.keys(allCards).length;
-  const prize = Math.floor(bet * totalCards * (gamePct / 100));
+  const totalBetAmount = bet * totalCards;
+  const prize = totalCards < 5 ? totalBetAmount : Math.floor(totalBetAmount * (gamePct / 100));
   await setState('game/prize', prize);
 
   const botWinPercent = (await getState('autoMode/botWinPercent')) ?? 50;
