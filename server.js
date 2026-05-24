@@ -1073,8 +1073,13 @@ const ALL_WIN_LINES = [
 
 // Target card ላይ random winning line ይምረጥ — FREE ሳይቆጠር
 function getWinningLine(board) {
-  const shuffled = [...ALL_WIN_LINES].sort(() => Math.random() - 0.5);
-  for (const line of shuffled) {
+  // Fisher-Yates shuffle — truly random (sort() bias አይደለም)
+  const lines = [...ALL_WIN_LINES];
+  for (let i = lines.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [lines[i], lines[j]] = [lines[j], lines[i]];
+  }
+  for (const line of lines) {
     const nums = line.map(i => board[i]).filter(n => n !== 'FREE');
     if (nums.length > 0) return nums;
   }
