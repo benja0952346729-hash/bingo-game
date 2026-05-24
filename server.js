@@ -1117,6 +1117,23 @@ async function startAutoCountdown() {
 async function startAutoGame() {
   if (!autoModeOn) return;
   try {
+    // ── Real players ቁጥር ይቁጠር ──
+    const allCards = (await getState('game/confirmedNumbers')) || {};
+    const usersSnap = await pool.query('SELECT uid, is_bot FROM users');
+    const allUsers = {};
+    usersSnap.rows.forEach(r => { allUsers[r.uid] = r.is_bot; });
+
+    const realPlayerCount = Object.values(allCards)
+      .filter(uid => !allUsers[uid]).length;
+
+    // ── 5 real players ካልሞሉ countdown ይደገማል ──
+    if (realPlayerCount < 5) {
+      console.log(`⚠️ Real players: ${realPlayerCount}/5 — countdown ይደገማል`);
+      broadcast({ type: 'waiting_players', current: realPlayerCount, needed: 5 });
+      await startAutoCountdown();
+      return;
+    }
+
     calledNumbers = [];
     await setState('game/countdown', { active: false });
     await setState('game/calledNumbers', []);
@@ -1510,16 +1527,34 @@ async function announceWinner(realBetsTotal, botBetsTotal) {
   } catch(e) { console.error('❌ announceWinner error:', e.message); }
 }
 
+// ══ ኢትዮጵያ ጠዋት 12:00 (6:00 AM UTC+3) reset key ══
+function getEthiopianDayKey() {
+  // UTC+3 ሰዓት ያሰላል
+  const now = new Date();
+  const etMs = now.getTime() + (3 * 60 * 60 * 1000); // UTC+3
+  const etDate = new Date(etMs);
+  // ጠዋት 6:00 AM UTC+3 = Ethiopian 12:00 ጠዋት
+  // ስለዚህ ቀን key = ቀኑ ጠዋት 6:00 AM ጀምሮ ቀጣዩ 6:00 AM ድረስ
+  const hour = etDate.getUTCHours();
+  const dateStr = etDate.toISOString().split('T')[0];
+  // 6:00 AM በፊት ከሆነ ቀዳሚው ቀን key ይሆናል
+  if (hour < 6) {
+    const prevDay = new Date(etMs - 24 * 60 * 60 * 1000);
+    return prevDay.toISOString().split('T')[0];
+  }
+  return dateStr;
+}
+
 async function scheduleNextRound() {
   if (!autoModeOn) return;
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getEthiopianDayKey();
     const lastReset = await getState('analytics/lastResetDate');
     if (lastReset !== todayStr) {
       await setState('analytics/lastResetDate', todayStr);
       roundNumber = 1;
       await setState('autoMode/round', roundNumber);
-      console.log('🔄 Daily Reset:', todayStr);
+      console.log('🔄 Ethiopian Daily Reset (12:00 ጠዋት):', todayStr);
     }
 
     roundNumber++;
