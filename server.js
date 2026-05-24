@@ -1,2329 +1,2203 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const https = require('https');
-const http = require('http');
-const multer = require('multer');
-const { Pool } = require('pg');
-
-const app = express();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-
-// ══ ANALYTICS HELPER ══
-async function updateAnalytics(key, amount) {
-  try {
-    await pool.query(
-      'INSERT INTO analytics(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value = analytics.value + $2',
-      [key, amount]
-    );
-  } catch(e) {
-    console.error('❌ Analytics error:', key, e.message);
-  }
-}
-
-pool.query(`
-  CREATE TABLE IF NOT EXISTS game_state (key TEXT PRIMARY KEY, value TEXT);
-  CREATE TABLE IF NOT EXISTS users (uid TEXT PRIMARY KEY, display TEXT, balance NUMERIC DEFAULT 0, is_bot BOOLEAN DEFAULT false);
-  CREATE TABLE IF NOT EXISTS promotions (id SERIAL PRIMARY KEY, text TEXT, photo_url TEXT, target_type TEXT, group_id TEXT, interval_ms BIGINT, next_send_at BIGINT, last_sent_at BIGINT, active BOOLEAN DEFAULT true, created_at BIGINT);
-  CREATE TABLE IF NOT EXISTS notifications (id SERIAL PRIMARY KEY, uid TEXT, message TEXT, time BIGINT, read BOOLEAN DEFAULT false);
-  CREATE TABLE IF NOT EXISTS analytics (key TEXT PRIMARY KEY, value NUMERIC DEFAULT 0);
-  CREATE TABLE IF NOT EXISTS all_winners (id SERIAL PRIMARY KEY, uid TEXT, display_name TEXT, card_id TEXT, prize NUMERIC, is_bot BOOLEAN, time BIGINT);
-`)
-.then(() => console.log('✅ DB ready!'))
-.catch(e => console.error('DB error:', e.message));
-pool.query(`
-  ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity BIGINT DEFAULT 0;
-`).then(() => console.log('✅ last_activity column ready!'))
-  .catch(e => console.error('ALTER error:', e.message));
-
-
-async function getState(key) {
-  const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [key]);
-  return r.rows.length ? JSON.parse(r.rows[0].value) : null;
-}
-
-async function setState(key, value) {
-  await pool.query(
-    'INSERT INTO game_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
-    [key, JSON.stringify(value)]
-  );
-}
-
-app.use(cors({ origin: '*', methods: ['GET', 'POST'], allowedHeaders: ['Content-Type'] }));
-app.use(express.static(__dirname));
-app.use(express.json());
-
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-
-app.get('/health', async (req, res) => {
-  try {
-    const users = await pool.query('SELECT COUNT(*) FROM users');
-    const notifications = await pool.query('SELECT COUNT(*) FROM notifications');
-    const winners = await pool.query('SELECT COUNT(*) FROM all_winners');
-    const dbSize = await pool.query("SELECT pg_size_pretty(pg_database_size(current_database())) as size");
-    res.json({
-      ok: true,
-      users: Number(users.rows[0].count),
-      notifications: Number(notifications.rows[0].count),
-      winners: Number(winners.rows[0].count),
-      db_size: dbSize.rows[0].size
-    });
-  } catch(e) {
-    res.json({ ok: true });
-  }
-});
-
-app.get('/user-state', async (req, res) => {
-  const { userId, firstName } = req.query;
-  const displayName = firstName ? decodeURIComponent(firstName) : userId;
-  if (!userId) return res.json({ balance: 0, isNew: false });
-  try {
-    const existing = await pool.query('SELECT uid FROM users WHERE uid=$1', [userId]);
-    const isNew = existing.rows.length === 0;
-    if (isNew) {
-      await pool.query(
-        'INSERT INTO users(uid,display,balance,is_bot) VALUES($1,$2,20,false)',
-        [userId, displayName]
-      );
-    } else {
-      await pool.query(
-  'UPDATE users SET display=$2, last_activity=$3 WHERE uid=$1',
-  [userId, displayName, Date.now()]
-);
-    }
-    const u = await pool.query('SELECT balance FROM users WHERE uid=$1', [userId]);
-    res.json({ balance: u.rows[0]?.balance || 0, isNew });
-  } catch(e) { res.json({ balance: 0, isNew: false }); }
-});
-
-app.post('/set-not-new', async (req, res) => { res.json({ ok: true }); });
-
-app.get('/all-winners', async (req, res) => {
-  try {
-    const r = await pool.query(
-      'SELECT uid as user, display_name as "displayName", card_id as "cardId", prize, time FROM all_winners ORDER BY time DESC LIMIT 100'
-    );
-    const round = (await getState('autoMode/round')) || 1;
-    res.json({ winners: r.rows, round });
-  } catch(e) { res.json({ winners: [], round: 1 }); }
-});
-
-app.post('/submit-payment',
-  multer({ storage: multer.memoryStorage() }).single('photo'),
-  async (req, res) => {
-    const { userId, amount } = req.body;
-    const file = req.file;
-    if (!file || !userId || !amount)
-      return res.json({ ok: false, msg: '❌ Data missing' });
-    try {
-      const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
-      const boundary = '----FormBoundary' + Date.now();
-      const body = Buffer.concat([
-        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="pay.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
-        file.buffer,
-        Buffer.from(`\r\n--${boundary}--\r\n`)
-      ]);
-      const photoUrl = await new Promise((resolve) => {
-        const opts = {
-          hostname: 'api.cloudinary.com',
-          path: `/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': `multipart/form-data; boundary=${boundary}`,
-            'Content-Length': body.length
-          }
-        };
-        const req2 = require('https').request(opts, r => {
-          let d = '';
-          r.on('data', c => d += c);
-          r.on('end', () => { try { resolve(JSON.parse(d).secure_url || ''); } catch { resolve(''); } });
-        });
-        req2.on('error', () => resolve(''));
-        req2.write(body); req2.end();
-      });
-
-      const key = `pay_${userId}_${Date.now()}`;
-      const existing = (await getState('bot/payments')) || {};
-      existing[key] = {
-        user_id: userId, amount: Number(amount),
-        photo_url: photoUrl, status: 'pending',
-        time: new Date().toISOString()
-      };
-      await setState('bot/payments', existing);
-      res.json({ ok: true });
-    } catch(e) { res.json({ ok: false, msg: e.message }); }
-  }
-);
-
-// ══ SSE ══
-let sseClients = [];
-app.get('/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  sseClients.push(res);
-  req.on('close', () => { sseClients = sseClients.filter(c => c !== res); });
-});
-
-function broadcast(data) {
-  sseClients.forEach(client => { client.write(`data: ${JSON.stringify(data)}\n\n`); });
-}
-
-// ══ TTS PROXY ══
-const SOUNDS_SERVER = 'http://localhost:3001';
-app.get('/tts/winner-announce', async (req, res) => {
-  try {
-    const response = await new Promise((resolve, reject) => {
-      http.get(`${SOUNDS_SERVER}/tts/winner-announce`, (r) => {
-        const chunks = [];
-        r.on('data', chunk => chunks.push(chunk));
-        r.on('end', () => resolve({ buffer: Buffer.concat(chunks) }));
-        r.on('error', reject);
-      }).on('error', reject);
-    });
-    res.set('Content-Type', 'audio/mpeg');
-    res.send(response.buffer);
-  } catch(e) { res.status(500).json({ error: 'TTS failed' }); }
-});
-app.get('/tts/congrats/:prize', async (req, res) => {
-  const prize = req.params.prize;
-  try {
-    const response = await new Promise((resolve, reject) => {
-      const text = encodeURIComponent(`ቢንጎ! እንኳን ደስ አለህ! ${prize} ብር አሸነፍክ!`);
-      https.get(`https://translate.google.com/translate_tts?ie=UTF-8&q=${text}&tl=am&client=tw-ob`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      }, (r) => {
-        const chunks = [];
-        r.on('data', chunk => chunks.push(chunk));
-        r.on('end', () => resolve({ buffer: Buffer.concat(chunks) }));
-        r.on('error', reject);
-      }).on('error', reject);
-    });
-    res.set('Content-Type', 'audio/mpeg');
-    res.send(response.buffer);
-  } catch(e) { res.status(500).json({ error: 'TTS failed' }); }
-});
-app.get('/tts/bingo', async (req, res) => {
-  try {
-    const response = await new Promise((resolve, reject) => {
-      http.get(`${SOUNDS_SERVER}/tts/bingo`, (r) => {
-        const chunks = [];
-        r.on('data', chunk => chunks.push(chunk));
-        r.on('end', () => resolve({ buffer: Buffer.concat(chunks) }));
-        r.on('error', reject);
-      }).on('error', reject);
-    });
-    res.set('Content-Type', 'audio/mpeg');
-    res.send(response.buffer);
-  } catch(e) { res.status(500).json({ error: 'TTS failed' }); }
-});
-
-app.get('/tts/number/:n', async (req, res) => {
-  const n = parseInt(req.params.n);
-  if (isNaN(n) || n < 1 || n > 75)
-    return res.status(400).json({ error: 'Invalid number' });
-  try {
-    const response = await new Promise((resolve, reject) => {
-      http.get(`${SOUNDS_SERVER}/tts/number/${n}`, (r) => {
-        const chunks = [];
-        r.on('data', chunk => chunks.push(chunk));
-        r.on('end', () => resolve({ buffer: Buffer.concat(chunks), type: r.headers['content-type'] }));
-        r.on('error', reject);
-      }).on('error', reject);
-    });
-    res.set('Content-Type', 'audio/mpeg');
-    res.send(response.buffer);
-  } catch(e) { res.status(500).json({ error: 'TTS failed' }); }
-});
-
-app.get('/game-state', async (req, res) => {
-  try {
-    const rows = await pool.query('SELECT key, value FROM game_state');
-    const result = {};
-    rows.rows.forEach(r => {
-      const keys = r.key.split('/');
-      let obj = result;
-      for (let i = 0; i < keys.length - 1; i++) {
-        if (!obj[keys[i]]) obj[keys[i]] = {};
-        obj = obj[keys[i]];
-      }
-      try { obj[keys[keys.length-1]] = JSON.parse(r.value); }
-      catch { obj[keys[keys.length-1]] = r.value; }
-    });
-    const flat = result.game || {};
-    flat.autoMode = result.autoMode;
-    flat.smartBot = result.smartBot;
-    flat.settings = result.settings;
-    flat.announcement = result.game?.announcement;
-    flat.winners = result.game?.winners;
-    flat.pendingWinner = result.game?.pendingWinner;
-    flat.status = result.game?.status;
-    flat.calledNumbers = result.game?.calledNumbers;
-    flat.countdown = result.game?.countdown;
-    flat.bet = result.game?.bet;
-    flat.prize = result.game?.prize;
-    flat.percent = result.game?.percent;
-    flat.confirmedNumbers = result.game?.confirmedNumbers;
-    flat.paid = result.game?.paid;
-
-    const usersRes = await pool.query('SELECT uid, display FROM users');
-    const displayNames = {};
-    usersRes.rows.forEach(r => { displayNames[r.uid] = r.display; });
-    flat.displayNames = displayNames;
-
-    flat['game/countdown'] = flat.countdown;
-    flat['game/status'] = flat.status;
-    flat['game/calledNumbers'] = flat.calledNumbers;
-    flat['game/winners'] = flat.winners;
-    flat['game/bet'] = flat.bet;
-    flat['game/prize'] = flat.prize;
-    flat['game/percent'] = flat.percent;
-    flat['game/confirmedNumbers'] = flat.confirmedNumbers;
-    flat['game/paid'] = flat.paid;
-    flat['game/pendingWinner'] = flat.pendingWinner;
-    flat['game/announcement'] = flat.announcement;
-    flat['autoMode/on'] = flat.autoMode?.on;
-    flat['autoMode/phase'] = flat.autoMode?.phase;
-    flat['autoMode/cdMinutes'] = flat.autoMode?.cdMinutes;
-    flat['autoMode/round'] = flat.autoMode?.round;
-    flat['autoMode/callSpeed'] = flat.autoMode?.callSpeed;
-    flat['autoMode/botWinPercent'] = flat.autoMode?.botWinPercent;
-    flat['smartBot/enabled'] = result.smartBot?.enabled;
-    flat['bot/withdrawals'] = result.bot?.withdrawals;
-    flat['bot/settings/cbe_account'] = result.bot?.settings?.cbe_account;
-    flat['bot/settings/telebirr_account'] = result.bot?.settings?.telebirr_account;
-    flat['confirmedNumbers'] = flat.confirmedNumbers;
-
-    const analyticsRows = await pool.query('SELECT key, value FROM analytics');
-    const analyticsData = {};
-    analyticsRows.rows.forEach(r => { analyticsData[r.key] = Number(r.value); });
-
-    flat['analytics/totalCollected']   = analyticsData['totalCollected']   || 0;
-    flat['analytics/totalPaidOut']     = analyticsData['totalPaidOut']     || 0;
-    flat['analytics/totalDeposits']    = analyticsData['totalDeposits']    || 0;
-    flat['analytics/totalWithdrawals'] = analyticsData['totalWithdrawals'] || 0;
-    flat['analytics/houseProfit'] = analyticsData['houseProfit'] || 0;
-    flat['analytics/botBet']      = analyticsData['botBet']      || 0;
-    flat['analytics/botWin']      = analyticsData['botWin']      || 0;
-
-    const history = (await getState('analytics/history')) || [];
-    flat['analytics/history'] = history;
-
-    res.json(flat);
-  } catch(e) { res.json({}); }
-});
-
-// ══ WITHDRAWALS ══
-app.get('/withdrawals', async (req, res) => {
-  try {
-    const r = await pool.query("SELECT value FROM game_state WHERE key='bot/withdrawals'");
-    const data = r.rows.length ? JSON.parse(r.rows[0].value) : {};
-    res.json({ withdrawals: data, serverTime: Date.now() });
-  } catch(e) { res.json({ withdrawals: {}, serverTime: Date.now() }); }
-});
-
-app.get('/agents', async (req, res) => {
-  try {
-    const r = await pool.query("SELECT value FROM game_state WHERE key='agents'");
-    const data = r.rows.length ? JSON.parse(r.rows[0].value) : {};
-    res.json(data);
-  } catch(e) { res.json({}); }
-});
-
-app.get('/promotions-list', async (req, res) => {
-  try {
-    const rows = await pool.query('SELECT * FROM promotions WHERE active=true ORDER BY created_at DESC');
-    res.json(rows.rows);
-  } catch(e) { res.json([]); }
-});
-
-app.post('/delete-promotion', async (req, res) => {
-  try {
-    const { id } = req.body;
-
-    const r = await pool.query('SELECT photo_url FROM promotions WHERE id=$1', [id]);
-    const photoUrl = r.rows[0]?.photo_url || '';
-
-    if (photoUrl) {
-      try {
-        const match = photoUrl.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
-        const publicId = match ? match[1] : null;
-        if (publicId) {
-          const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
-          const postData = JSON.stringify({ public_ids: [publicId] });
-          await new Promise((resolve) => {
-            const options = {
-              hostname: 'api.cloudinary.com',
-              path: `/v1_1/${CLOUDINARY_CLOUD}/resources/image/upload`,
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData)
-              }
-            };
-            const req2 = https.request(options, (r2) => { r2.on('data', ()=>{}); r2.on('end', resolve); });
-            req2.on('error', resolve);
-            req2.write(postData); req2.end();
-          });
-          console.log(`🗑️ Cloudinary deleted: ${publicId}`);
-        }
-      } catch(e) { console.error('❌ Cloudinary delete error:', e.message); }
-    }
-
-    await pool.query('DELETE FROM promotions WHERE id=$1', [id]);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-// ══ SEND NOW PHOTO SAVE ══
-app.post('/save-promo-photo', multer({ storage: multer.memoryStorage() }).single('photo'), async (req, res) => {
-  const photoBuffer = req.file ? req.file.buffer : null;
-  if (!photoBuffer) return res.json({ ok: false, msg: '❌ Photo የለም!' });
-  try {
-    const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
-    const boundary = '----FormBoundary' + Date.now();
-    const body = Buffer.concat([
-      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="promo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
-      photoBuffer,
-      Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="upload_preset"\r\n\r\nml_default\r\n--${boundary}--\r\n`)
-    ]);
-    const photoUrl = await new Promise((resolve) => {
-      const options = {
-        hostname: 'api.cloudinary.com',
-        path: `/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-        method: 'POST',
-        headers: {
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': body.length,
-          'Authorization': `Basic ${auth}`
-        }
-      };
-      const req2 = https.request(options, (r) => {
-        let d = '';
-        r.on('data', c => d += c);
-        r.on('end', () => { try { resolve(JSON.parse(d).secure_url || ''); } catch { resolve(''); } });
-      });
-      req2.on('error', () => resolve(''));
-      req2.write(body); req2.end();
-    });
-
-    const result = await pool.query(
-      'INSERT INTO promotions(text,photo_url,target_type,interval_ms,active,created_at) VALUES($1,$2,$3,$4,false,$5) RETURNING id',
-      ['__send_now__', photoUrl, 'bot', 0, Date.now()]
-    );
-    res.json({ ok: true, photoUrl, promoId: result.rows[0].id });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-// ══ DELETE SEND NOW PHOTO ══
-app.post('/delete-promo-photo', async (req, res) => {
-  try {
-    const { promoId, photoUrl } = req.body;
-
-    if (photoUrl) {
-      try {
-        const match = photoUrl.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
-        const publicId = match ? match[1] : null;
-        if (publicId) {
-          const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
-          const postData = JSON.stringify({ public_ids: [publicId] });
-          await new Promise((resolve) => {
-            const options = {
-              hostname: 'api.cloudinary.com',
-              path: `/v1_1/${CLOUDINARY_CLOUD}/resources/image/upload`,
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(postData)
-              }
-            };
-            const req2 = https.request(options, (r2) => { r2.on('data', ()=>{}); r2.on('end', resolve); });
-            req2.on('error', resolve);
-            req2.write(postData); req2.end();
-          });
-          console.log(`🗑️ Cloudinary deleted: ${publicId}`);
-        }
-      } catch(e) { console.error('❌ Cloudinary delete error:', e.message); }
-    }
-
-    if (promoId) await pool.query('DELETE FROM promotions WHERE id=$1', [promoId]);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/give-balance', async (req, res) => {
-  try {
-    const { uid, amount } = req.body;
-    await pool.query(
-      'INSERT INTO users(uid,display,balance) VALUES($1,$2,$3) ON CONFLICT(uid) DO UPDATE SET balance=users.balance+$3',
-      [uid, uid, amount]
-    );
-    const r = await pool.query('SELECT balance FROM users WHERE uid=$1', [uid]);
-    const newBal = r.rows[0]?.balance || 0;
-    broadcast({ type: 'balance', uid, balance: newBal });
-    await updateAnalytics('totalDeposits', Number(amount));
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/save-accounts', async (req, res) => {
-  try {
-    const { cbe, telebirr } = req.body;
-    if (cbe) await setState('bot/settings/cbe_account', cbe);
-    if (telebirr) await setState('bot/settings/telebirr_account', telebirr);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false }); }
-});
-
-app.post('/withdrawal-action', async (req, res) => {
-  try {
-    const { key, action, uid, amount } = req.body;
-    const allWd = JSON.parse(
-      (await pool.query("SELECT value FROM game_state WHERE key='bot/withdrawals'")).rows[0]?.value || '{}'
-    );
-    if (!allWd[key]) return res.json({ ok: false, msg: 'Not found' });
-
-    allWd[key].status = action === 'approve' ? 'approved' : 'rejected';
-    await setState('bot/withdrawals', allWd);
-
-    if (action === 'approve') {
-      await updateAnalytics('totalWithdrawals', amount);
-      const agentsData2 = JSON.parse(
-        (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
-      );
-      const agentCode = agentsData2[allWd[key]?.acceptedBy]?.code || allWd[key]?.acceptedBy || '—';
-      await pool.query(
-        "UPDATE game_state SET value='0' WHERE key=$1",
-        [`users/${uid}/pending_withdrawal`]
-      );
-      const wd = allWd[key];
-      const method = wd?.method || 'ባንክ';
-      const account = wd?.account || '—';
-      await pool.query(
-        'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-        [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`, Date.now()]
-      );
-    } else {
-      await pool.query('UPDATE users SET balance=balance+$1 WHERE uid=$2', [amount, uid]);
-      const r = await pool.query('SELECT balance FROM users WHERE uid=$1', [uid]);
-      const newBal = r.rows[0]?.balance || 0;
-      broadcast({ type: 'balance', uid, balance: newBal });
-      await pool.query(
-        'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-        [uid, `❌ Withdrawal rejected — ${amount} ብር balance ላይ ተመለሰ!`, Date.now()]
-      );
-    }
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/add-agent', async (req, res) => {
-  try {
-    const { name, id_number } = req.body;
-    const agents = JSON.parse(
-      (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
-    );
-    const existingCodes = Object.values(agents)
-      .map(a => a.code)
-      .filter(Boolean)
-      .map(c => parseInt(c.replace('AGT-', '')))
-      .filter(n => !isNaN(n));
-    const nextNum = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
-    const code = 'AGT-' + String(nextNum).padStart(3, '0');
-    agents[name] = { id_number, code };
-    await setState('agents', agents);
-    res.json({ ok: true, code });
-  } catch(e) { res.json({ ok: false }); }
-});
-
-app.post('/delete-agent', async (req, res) => {
-  try {
-    const { name } = req.body;
-    const agents = JSON.parse(
-      (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
-    );
-    delete agents[name];
-    await setState('agents', agents);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false }); }
-});
-
-app.post('/change-agent-pass', async (req, res) => {
-  try {
-    const { password } = req.body;
-    await setState('settings/agent_password', password);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false }); }
-});
-
-app.post('/remove-bots', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM users WHERE is_bot = true');
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.get('/unread-notifications', async (req, res) => {
-  try {
-    const r = await pool.query(
-      'SELECT id, uid, message FROM notifications WHERE read=false ORDER BY time ASC LIMIT 50'
-    );
-    res.json(r.rows);
-  } catch(e) { res.json([]); }
-});
-
-app.post('/mark-notification-read', async (req, res) => {
-  try {
-    const { id } = req.body;
-    await pool.query('UPDATE notifications SET read=true WHERE id=$1', [id]);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false }); }
-});
-
-app.post('/update-balance', async (req, res) => {
-  try {
-    const { uid, amount, type } = req.body;
-    if (type === 'add') {
-      await pool.query('UPDATE users SET balance = balance + $1 WHERE uid=$2', [amount, uid]);
-    } else {
-      await pool.query('UPDATE users SET balance = GREATEST(0, balance - $1) WHERE uid=$2', [amount, uid]);
-    }
-    const r = await pool.query('SELECT balance FROM users WHERE uid=$1', [uid]);
-    const newBal = r.rows[0]?.balance || 0;
-    broadcast({ type: 'balance', uid, balance: newBal });
-    res.json({ ok: true, balance: newBal });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.get('/get-balance', async (req, res) => {
-  try {
-    const { uid } = req.query;
-    const r = await pool.query('SELECT balance FROM users WHERE uid=$1', [uid]);
-    res.json({ balance: r.rows[0]?.balance || 0 });
-  } catch(e) { res.json({ balance: 0 }); }
-});
-
-// ══ WITHDRAWAL TOGGLE ══
-app.get('/withdrawal-status', async (req, res) => {
-  try {
-    const enabled = (await getState('settings/withdrawal_enabled')) ?? true;
-    res.json({ enabled });
-  } catch(e) { res.json({ enabled: true }); }
-});
-
-app.post('/withdrawal-toggle', async (req, res) => {
-  try {
-    const { enabled } = req.body;
-    await setState('settings/withdrawal_enabled', enabled);
-    broadcast({ type: 'withdrawal_status', enabled });
-    res.json({ ok: true, enabled });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-// ══ CLEAR ANALYTICS ══
-app.post('/clear-analytics', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM analytics');
-    await setState('analytics/history', []);
-    console.log('🔄 Analytics manually cleared');
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-// ══ CLOUDINARY ══
-const CLOUDINARY_CLOUD = 'diado1bxi';
-const CLOUDINARY_API_KEY = '117446111831141';
-const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_SECRET;
-
-let soundsMap = {};
-
-async function loadCloudinarySounds() {
-  return new Promise((resolve) => {
-    const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
-    const options = {
-      hostname: 'api.cloudinary.com',
-      path: `/v1_1/${CLOUDINARY_CLOUD}/resources/video?max_results=100`,
-      method: 'GET',
-      headers: { 'Authorization': `Basic ${auth}` }
-    };
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          const resources = json.resources || [];
-          resources.forEach(r => {
-            const publicId = r.public_id;
-            const match = publicId.match(/^([A-Z]+\d+)/);
-            const key = match ? match[1] : publicId;
-            soundsMap[key] = r.secure_url;
-          });
-          console.log(`✅ Loaded ${Object.keys(soundsMap).length} sounds from Cloudinary`);
-        } catch(e) { console.error('❌ Cloudinary parse error:', e.message); }
-        resolve();
-      });
-    });
-    req.on('error', (e) => { console.error('❌ Cloudinary load error:', e.message); resolve(); });
-    req.end();
-  });
-}
-
-app.get('/get-config', async (req, res) => {
-  try {
-    const r = await pool.query("SELECT value FROM game_state WHERE key='adminConfig'");
-    const config = r.rows.length ? JSON.parse(r.rows[0].value) : { loginPassword: '1234', settingsPassword: '9999' };
-    res.json(config);
-  } catch(e) { res.json({ loginPassword: '1234', settingsPassword: '9999' }); }
-});
-
-app.post('/save-config', async (req, res) => {
-  try {
-    const { loginPassword, settingsPassword } = req.body;
-    const config = { loginPassword, settingsPassword };
-    await pool.query(
-      "INSERT INTO game_state(key,value) VALUES('adminConfig',$1) ON CONFLICT(key) DO UPDATE SET value=$1",
-      [JSON.stringify(config)]
-    );
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.get('/sounds-map', (req, res) => res.json(soundsMap));
-loadCloudinarySounds();
-
-// ══ PROMOTIONS ══
-app.post('/create-interval-promotion', multer({ storage: multer.memoryStorage() }).single('photo'), async (req, res) => {
-  const { text, targetType, groupId, intervalMs } = req.body;
-  const photoBuffer = req.file ? req.file.buffer : null;
-  if (!text && !photoBuffer) return res.json({ ok: false, msg: '❌ Message ወይም Photo ያስፈልጋል!' });
-
-  res.json({ ok: true, msg: '✅ Interval promotion ተጀምሯል!' });
-
-  try {
-    let photoUrl = '';
-    if (photoBuffer) {
-      const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
-      const boundary = '----FormBoundary' + Date.now();
-      const body = Buffer.concat([
-        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="promo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
-        photoBuffer,
-        Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="upload_preset"\r\n\r\nml_default\r\n--${boundary}--\r\n`)
-      ]);
-      photoUrl = await new Promise((resolve) => {
-        const options = {
-          hostname: 'api.cloudinary.com',
-          path: `/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-          method: 'POST',
-          headers: {
-            'Content-Type': `multipart/form-data; boundary=${boundary}`,
-            'Content-Length': body.length,
-            'Authorization': `Basic ${auth}`
-          }
-        };
-        const request = require('https').request(options, (r) => {
-          let d = '';
-          r.on('data', chunk => d += chunk);
-          r.on('end', () => { try { resolve(JSON.parse(d).secure_url || ''); } catch(e) { resolve(''); } });
-        });
-        request.on('error', () => resolve(''));
-        request.write(body); request.end();
-      });
-    }
-    await pool.query(
-      'INSERT INTO promotions(text,photo_url,target_type,group_id,interval_ms,next_send_at,active,created_at) VALUES($1,$2,$3,$4,$5,$6,true,$7)',
-      [text || '', photoUrl, targetType || 'bot', groupId || '', Number(intervalMs) || 3600000, Date.now() + (Number(intervalMs) || 3600000), Date.now()]
-    );
-    console.log('✅ Interval promo created!');
-  } catch(e) { console.error('❌ create-interval-promotion error:', e.message); }
-});
-
-app.post('/send-promotion', multer({ storage: multer.memoryStorage() }).single('photo'), async (req, res) => {
-  const { text, targetType, groupId, photoUrl } = req.body;
-  const photoBuffer = req.file ? req.file.buffer : null;
-  if (!text && !photoBuffer && !photoUrl)
-    return res.json({ ok: false, msg: '❌ Message ወይም Photo ያስፈልጋል!' });
-
-  res.json({ ok: true, msg: '✅ Promotion እየተላከ ነው...' });
-
-  broadcastPromotion({ text, photoBuffer, photoUrl, targetType, groupId })
-    .catch(e => console.error('❌ broadcastPromotion:', e.message));
-});
-
-// ══ PROMOTION BROADCAST ══
-async function broadcastPromotion(promoData) {
-  try {
-    const { text, photoBuffer, photoUrl, targetType, groupId } = promoData;
-    const BOT_TOKEN = process.env.BOT_TOKEN || '';
-
-    if (!BOT_TOKEN) {
-      console.error('❌ BOT_TOKEN not set!');
-      return;
-    }
-
-    if (targetType === 'group' && groupId) {
-      let apiPath, bodyData;
-      if (photoUrl) {
-        apiPath = `/bot${BOT_TOKEN}/sendPhoto`;
-        bodyData = JSON.stringify({
-          chat_id: groupId,
-          photo: photoUrl,
-          caption: text || '',
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
-            ]]
-          }
-        });
-      } else {
-        apiPath = `/bot${BOT_TOKEN}/sendMessage`;
-        bodyData = JSON.stringify({
-          chat_id: groupId,
-          text: text || '',
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
-            ]]
-          }
-        });
-      }
-      await new Promise((resolve) => {
-        const opts = {
-          hostname: 'api.telegram.org',
-          path: apiPath,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) }
-        };
-        const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
-        r2.on('error', resolve);
-        r2.write(bodyData); r2.end();
-      });
-      console.log('✅ Group promotion sent!');
-      return;
-    }
-
-    const usersRes = await pool.query('SELECT uid FROM users WHERE is_bot = false');
-    const uids = usersRes.rows.map(r => r.uid);
-    console.log(`📢 Sending promotion to ${uids.length} users...`);
-
-    for (const uid of uids) {
-      try {
-        if (photoBuffer) {
-          const replyMarkup = JSON.stringify({
-            inline_keyboard: [[
-              { text: '🎮 Play Now', web_app: { url: 'https://benja0952346729-hash.github.io/Game/' } }
-            ]]
-          });
-          const boundary = '----FormBoundary' + Date.now();
-          const body = Buffer.concat([
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${uid}\r\n`),
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${text || ''}\r\n`),
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n`),
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="reply_markup"\r\n\r\n${replyMarkup}\r\n`),
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="promo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
-            photoBuffer,
-            Buffer.from(`\r\n--${boundary}--\r\n`)
-          ]);
-          await new Promise((resolve) => {
-            const opts = {
-              hostname: 'api.telegram.org',
-              path: `/bot${BOT_TOKEN}/sendPhoto`,
-              method: 'POST',
-              headers: {
-                'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                'Content-Length': body.length
-              }
-            };
-            const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
-            r2.on('error', resolve);
-            r2.write(body); r2.end();
-          });
-        } else if (photoUrl) {
-          const bodyData = JSON.stringify({
-            chat_id: uid,
-            photo: photoUrl,
-            caption: text || '',
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [[
-                { text: '🎮 Play Now', web_app: { url: 'https://game-production-7f86.up.railway.app/' } }
-              ]]
+"""
+╔══════════════════════════════════════════════════════════════════╗
+║         BINGO PRO — TELEGRAM BOT (SERVER.JS COMPATIBLE)         ║
+║  Backend: PostgreSQL via server.js REST API                      ║
+║  NO FIREBASE — uses /db-get /db-set /db-push only               ║
+║  FIXED: photo OCR message + state race condition                 ║
+║  FIXED: Amharic button labels + withdraw indentation bug         ║
+║  FIXED: SMS amount used as source of truth + timeout 20min      ║
+║  FIXED: Outgoing SMS (transferred/sent/paid) ignore             ║
+║  FIXED: Approved pid added to _cancelled_pids (no false timeout)║
+║  FIXED: Admin approve saves ref + removes buttons               ║
+║  FIXED: Admin reject saves ref — no re-use of screenshot        ║
+║  NEW: /bot-users endpoint — Admin HTML users page               ║
+║  NEW: /delete-user endpoint — ሙሉ user ይሰርዛል                   ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+
+import os
+import re
+import io
+import json
+import time
+import hashlib
+import threading
+import requests
+from datetime import datetime, timedelta
+
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from flask import Flask, request as flask_request, jsonify
+
+# ══════════════════════════════════════════
+# CONFIG
+# ══════════════════════════════════════════
+BOT_TOKEN  = os.environ.get("BOT_TOKEN", "")
+ADMIN_ID   = 6883208728
+WEBAPP_URL = "https://benja0952346729-hash.github.io/Game/"
+SERVER = "https://bingo-bingo-bingo.onrender.com"
+
+MIN_WITHDRAWAL = 50
+
+REFERRAL_SMALL_COUNT = 20
+REFERRAL_SMALL_AMT   = 100
+REFERRAL_BIG_COUNT   = 100
+REFERRAL_BIG_AMT     = 5000
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+DAILY_REPORT_HOUR   = 20
+DAILY_REPORT_MINUTE = 0
+REMINDER_HOURS      = 24
+
+# ══════════════════════════════════════════
+# IN-MEMORY STATE CACHE (fixes race condition)
+# ══════════════════════════════════════════
+_state_cache = {}
+_state_lock  = threading.Lock()
+
+def _cache_key(path):
+    return path
+
+def cache_set(path, value):
+    with _state_lock:
+        _state_cache[_cache_key(path)] = value
+
+def cache_get(path):
+    with _state_lock:
+        return _state_cache.get(_cache_key(path))
+
+def cache_del(path):
+    with _state_lock:
+        _state_cache.pop(_cache_key(path), None)
+
+# ══════════════════════════════════════════
+# SERVER.JS API HELPERS  (NO FIREBASE)
+# ══════════════════════════════════════════
+def db_get(path):
+    try:
+        r = requests.get(f"{SERVER}/db-get", params={"path": path}, timeout=5)
+        return r.json()
+    except:
+        return None
+
+def db_set(path, value):
+    try:
+        requests.post(f"{SERVER}/db-set",
+            json={"path": path, "value": value}, timeout=5)
+        if value is None:
+            cache_del(path)
+        else:
+            cache_set(path, value)
+    except:
+        pass
+
+def db_delete(path):
+    db_set(path, None)
+
+def db_push(path, value):
+    try:
+        r = requests.post(f"{SERVER}/db-push",
+            json={"path": path, "value": value}, timeout=5)
+        data = r.json()
+        class R: pass
+        obj = R()
+        obj.key = data.get("key", str(int(time.time() * 1000)))
+        return obj
+    except:
+        class R: pass
+        obj = R()
+        obj.key = str(int(time.time() * 1000))
+        return obj
+
+# ── state helpers ──
+def get_state(path):
+    cached = cache_get(path)
+    if cached is not None:
+        return cached
+    val = db_get(path)
+    if val is not None:
+        cache_set(path, val)
+    return val
+
+def set_state(path, value):
+    if value is None:
+        cache_del(path)
+    else:
+        cache_set(path, value)
+    db_set(path, value)
+
+# ── balance helpers ──
+def get_balance(uid):
+    try:
+        r = requests.get(f"{SERVER}/get-balance", params={"uid": uid}, timeout=5)
+        return int(float(r.json().get("balance", 0) or 0))
+    except:
+        return 0
+
+def update_balance(uid, amount, typ="add"):
+    try:
+        r = requests.post(f"{SERVER}/update-balance",
+            json={"uid": uid, "amount": amount, "type": typ}, timeout=5)
+        return int(float(r.json().get("balance", 0) or 0))
+    except:
+        return 0
+
+def ensure_user(uid, display):
+    try:
+        r = requests.get(f"{SERVER}/user-state",
+            params={"userId": uid, "firstName": display}, timeout=5)
+        data = r.json()
+        return data.get("isNew", False), int(float(data.get("balance", 0) or 0))
+    except:
+        return False, 0
+
+def get_cbe_account():
+    val = db_get("bot/settings/cbe_account")
+    if val:
+        return str(val).strip('"').strip("'")
+    try:
+        r = requests.get(f"{SERVER}/game-state", timeout=5)
+        v = r.json().get("bot/settings/cbe_account") or ""
+        return str(v).strip('"').strip("'")
+    except:
+        return ""
+
+def get_telebirr_account():
+    val = db_get("bot/settings/telebirr_account")
+    if val:
+        return str(val).strip('"').strip("'")
+    try:
+        r = requests.get(f"{SERVER}/game-state", timeout=5)
+        v = r.json().get("bot/settings/telebirr_account") or ""
+        return str(v).strip('"').strip("'")
+    except:
+        return ""
+
+# ══════════════════════════════════════════
+# USER BOT STATE
+# ══════════════════════════════════════════
+def get_botstate(uid):
+    cached = cache_get(f"botstate_{uid}")
+    if cached is not None:
+        return str(cached).strip('"').strip("'")
+    val = db_get(f"botstate_{uid}")
+    if val is not None:
+        s = str(val).strip('"').strip("'")
+        cache_set(f"botstate_{uid}", s)
+        return s
+    return None
+
+def set_botstate(uid, state):
+    if state is None:
+        cache_del(f"botstate_{uid}")
+        db_set(f"botstate_{uid}", None)
+    else:
+        cache_set(f"botstate_{uid}", state)
+        db_set(f"botstate_{uid}", state)
+
+# ══════════════════════════════════════════
+# TEMP DEPOSIT DATA
+# ══════════════════════════════════════════
+def get_temp(uid):
+    cached = cache_get(f"temp_{uid}")
+    if cached is not None:
+        return cached
+    raw = db_get(f"temp/{uid}")
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        cache_set(f"temp_{uid}", raw)
+        return raw
+    try:
+        amount = int(float(raw))
+        t = {"amount": amount, "retry_count": 0}
+        cache_set(f"temp_{uid}", t)
+        return t
+    except:
+        return None
+
+def set_temp(uid, value):
+    if value is None:
+        cache_del(f"temp_{uid}")
+        db_set(f"temp/{uid}", None)
+    else:
+        cache_set(f"temp_{uid}", value)
+        db_set(f"temp/{uid}", value)
+
+def update_temp(uid, key, val):
+    t = get_temp(uid) or {}
+    if not isinstance(t, dict):
+        t = {"amount": 0}
+    t[key] = val
+    set_temp(uid, t)
+
+# ══════════════════════════════════════════
+# BOT + FLASK
+# ══════════════════════════════════════════
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def home():
+    return "Bingo Bot is running"
+
+# ══════════════════════════════════════════
+# BOT USERS ENDPOINT — Admin HTML ለ users page
+# ══════════════════════════════════════════
+@flask_app.route("/bot-users", methods=["GET"])
+def bot_users():
+    try:
+        display_names = db_get("displayNames") or {}
+        users_meta    = db_get("users") or {}
+        now_ts = datetime.now().timestamp() * 1000
+        LIVE_MS = 5 * 60 * 1000  # 5 ደቂቃ
+
+        result = {}
+        for uid, name in display_names.items():
+            if not str(uid).isdigit():
+                continue
+            try:
+                bal_r = requests.get(f"{SERVER}/get-balance", params={"uid": uid}, timeout=5)
+                balance = int(float(bal_r.json().get("balance", 0) or 0))
+            except:
+                balance = 0
+
+            meta = users_meta.get(uid) or {}
+            last_activity = meta.get("last_activity") or meta.get("lastActivity") or None
+            is_live = False
+            if last_activity:
+                try:
+                    is_live = (now_ts - float(last_activity)) < LIVE_MS
+                except:
+                    is_live = False
+
+            result[uid] = {
+                "uid":          uid,
+                "name":         str(name),
+                "balance":      balance,
+                "last_activity": last_activity,
+                "is_live":      is_live,
+                "joined_at":    meta.get("joined_at", ""),
             }
-          });
-          await new Promise((resolve) => {
-            const opts = {
-              hostname: 'api.telegram.org',
-              path: `/bot${BOT_TOKEN}/sendPhoto`,
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(bodyData)
-              }
-            };
-            const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
-            r2.on('error', resolve);
-            r2.write(bodyData); r2.end();
-          });
-        } else {
-          const bodyData = JSON.stringify({
-            chat_id: uid,
-            text: text || '',
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [[
-                { text: '🎮 Play Now', web_app: { url: 'https://game-production-7f86.up.railway.app/' } }
-              ]]
-            }
-          });
-          await new Promise((resolve) => {
-            const opts = {
-              hostname: 'api.telegram.org',
-              path: `/bot${BOT_TOKEN}/sendMessage`,
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(bodyData)
-              }
-            };
-            const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
-            r2.on('error', resolve);
-            r2.write(bodyData); r2.end();
-          });
-        }
-        await new Promise(r => setTimeout(r, 50));
-      } catch(e) {
-        console.error(`❌ Promo to ${uid}:`, e.message);
-      }
-    }
-    console.log(`✅ Promotion sent to ${uids.length} users`);
-  } catch(e) { console.error('❌ broadcastPromotion error:', e.message); }
-}
-
-async function checkPromotions() {
-  try {
-    const promos = (await pool.query('SELECT * FROM promotions WHERE active=true')).rows;
-    const now = Date.now();
-    for (const p of promos) {
-      if (!p.next_send_at) continue;
-      if (now < Number(p.next_send_at)) continue;
-      console.log(`📢 Sending interval promotion id=${p.id}`);
-      try {
-        await broadcastPromotion({
-          text: p.text || '',
-          photoBuffer: null,
-          photoUrl: p.photo_url || '',
-          targetType: p.target_type || 'bot',
-          groupId: p.group_id || ''
-        });
-        await pool.query(
-          'UPDATE promotions SET next_send_at=$1, last_sent_at=$2 WHERE id=$3',
-          [now + (Number(p.interval_ms) || 3600000), now, p.id]
-        );
-        console.log(`✅ Promotion sent! id=${p.id}`);
-      } catch(e) {
-        console.error('❌ Promotion send error:', e.message);
-        await pool.query(
-          'UPDATE promotions SET next_send_at=$1 WHERE id=$2',
-          [now + (Number(p.interval_ms) || 3600000), p.id]
-        );
-      }
-    }
-  } catch(e) {
-    console.error('❌ checkPromotions error:', e.message);
-  }
-}
-
-setInterval(checkPromotions, 60 * 1000);
-console.log('📢 Promotion interval scheduler started');
-
-app.post('/confirm-card', async (req, res) => {
-  const { userId, cardId } = req.body;
-  if (!userId || !cardId) return res.json({ ok: false, msg: 'Missing data' });
-  try {
-    const bet = (await getState('game/bet')) || 0;
-    const balRes = await pool.query('SELECT balance FROM users WHERE uid=$1', [userId]);
-    const bal = balRes.rows.length ? Number(balRes.rows[0].balance) : 0;
-    if (bal < bet) return res.json({ ok: false, msg: '❌ Balance አንስተኛ ነው!' });
-
-    const status = await getState('game/status');
-    if (status?.started) return res.json({ ok: false, msg: '❌ Game ጀምሯል!' });
-
-    const allCards = (await getState('game/confirmedNumbers')) || {};
-    const myCards = Object.values(allCards).filter(v => String(v) === String(userId));
-    if (myCards.length >= 10) return res.json({ ok: false, msg: '❌ ከ 10 ካርድ በላይ መያዝ አይቻልም!' });
-    if (allCards[cardId]) return res.json({ ok: false, msg: '❌ Card ተይዟል!' });
-
-    allCards[cardId] = userId;
-    await setState('game/confirmedNumbers', allCards);
-    await pool.query('UPDATE users SET balance = balance - $1 WHERE uid=$2', [bet, userId]);
-
-    const total = Object.keys(allCards).length;
-    const pct = (await getState('game/percent')) || 80;
-    const totalBet = bet * total;
-    // 5 card ካልሞሉ prize = total bet ሙሉ፣ 5 እና በላይ ከሆነ percent ይቀነሳል
-    const prize = total < 5 ? totalBet : Math.floor(totalBet * (pct / 100));
-    await setState('game/prize', prize);
-    await setState('game/total', totalBet);
-
-    await updateAnalytics('totalCollected', bet);
-
-    const currentBet = await getState('game/bet');
-    const allC = (await getState('game/confirmedNumbers')) || {};
-    const totalCards = Object.keys(allC).length;
-    const totalPlayers = new Set(Object.values(allC)).size;
-    broadcast({ type: 'card_taken', cardId, userId, prize, bet: currentBet, totalCards, totalPlayers });
-
-    return res.json({ ok: true, msg: '✅ Card confirmed!' });
-  } catch(e) { return res.json({ ok: false, msg: 'Error: ' + e.message }); }
-});
-
-// ══ STATE ══
-let autoModeOn = false;
-let autoCdMinutes = 3;
-let calledNumbers = [];
-let callTimer = null;
-let countdownTimer = null;
-let announceTimer = null;
-let roundNumber = 1;
-let gamePct = 80;
-
-console.log('🚀 Bingo Server Started!');
-
-function getLetter(n) {
-  if (n <= 15) return 'B';
-  if (n <= 30) return 'I';
-  if (n <= 45) return 'N';
-  if (n <= 60) return 'G';
-  return 'O';
-}
-
-function hashSeed(n) {
-  let h = n;
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  return (h ^ (h >>> 16)) >>> 0;
-}
-
-function generateBoard(seed) {
-  let s = seed;
-  function rand() {
-    s = (Math.imul(s, 1664525) + 1013904223) & 0xFFFFFFFF;
-    return (s >>> 0) / 0x100000000;
-  }
-  function getNums(min, max) {
-    let arr = [];
-    while(arr.length < 5) {
-      let n = Math.floor(rand() * (max - min + 1)) + min;
-      if(!arr.includes(n)) arr.push(n);
-    }
-    return arr;
-  }
-  let B=getNums(1,15), I=getNums(16,30), N=getNums(31,45),
-      G=getNums(46,60), O=getNums(61,75);
-  let b = [];
-  for(let i=0;i<5;i++) b.push(B[i],I[i],N[i],G[i],O[i]);
-  b[12] = 'FREE';
-  return b;
-}
-
-function checkWin(board, called) {
-  const calledNums = called.map(Number);
-  const g = [];
-  for (let i = 0; i < 5; i++) g.push(board.slice(i * 5, (i + 1) * 5));
-  for (let r = 0; r < 5; r++)
-    if (g[r].every(n => n === 'FREE' || calledNums.includes(Number(n)))) return true;
-  for (let c = 0; c < 5; c++)
-    if ([0,1,2,3,4].every(r => g[r][c] === 'FREE' || calledNums.includes(Number(g[r][c])))) return true;
-  if ([0,1,2,3,4].every(i => g[i][i] === 'FREE' || calledNums.includes(Number(g[i][i])))) return true;
-  if ([0,1,2,3,4].every(i => g[i][4-i] === 'FREE' || calledNums.includes(Number(g[i][4-i])))) return true;
-  return false;
-}
-
-function clearAllTimers() {
-  clearInterval(callTimer); callTimer = null;
-  clearInterval(countdownTimer); countdownTimer = null;
-  clearInterval(announceTimer); announceTimer = null;
-}
-
-// ══ WIN LINE PATTERNS ══
-const ALL_WIN_LINES = [
-  [0,1,2,3,4],      // row 1
-  [5,6,7,8,9],      // row 2
-  [10,11,12,13,14], // row 3
-  [15,16,17,18,19], // row 4
-  [20,21,22,23,24], // row 5
-  [0,5,10,15,20],   // col 1 (B)
-  [1,6,11,16,21],   // col 2 (I)
-  [2,7,12,17,22],   // col 3 (N)
-  [3,8,13,18,23],   // col 4 (G)
-  [4,9,14,19,24],   // col 5 (O)
-  [0,6,12,18,24],   // diagonal ↘
-  [4,8,12,16,20],   // diagonal ↙
-];
-
-// Target card ላይ random winning line ይምረጥ — FREE ሳይቆጠር
-function getWinningLine(board) {
-  // Fisher-Yates shuffle — truly random (sort() bias አይደለም)
-  const lines = [...ALL_WIN_LINES];
-  for (let i = lines.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [lines[i], lines[j]] = [lines[j], lines[i]];
-  }
-  for (const line of lines) {
-    const nums = line.map(i => board[i]).filter(n => n !== 'FREE');
-    if (nums.length > 0) return nums;
-  }
-  // fallback
-  return ALL_WIN_LINES[0].map(i => board[i]).filter(n => n !== 'FREE');
-}
-
-setInterval(async () => {
-  try {
-    const val = await getState('autoMode/on');
-    if (val === true && !autoModeOn) {
-      autoModeOn = true;
-      console.log('✅ Auto Mode ON');
-      autoCdMinutes = (await getState('autoMode/cdMinutes')) || 3;
-      roundNumber = (await getState('autoMode/round')) || 1;
-      startAutoCountdown();
-    } else if (!val && autoModeOn) {
-      autoModeOn = false;
-      clearAllTimers();
-      await setState('autoMode/phase', 'idle');
-      console.log('⏹ Auto Mode OFF');
-    }
-  } catch(e) { console.error('❌ autoMode poll error:', e.message); }
-}, 3000);
-
-async function startAutoCountdown() {
-  if (!autoModeOn) return;
-  clearAllTimers();
-  const secs = autoCdMinutes * 60;
-  const startAt = Date.now() + secs * 1000;
-  await setState('game/countdown', { active: true, startAt, mins: autoCdMinutes, autoStart: true });
-  await setState('autoMode/phase', 'countdown');
-  console.log(`⏱ Countdown: ${autoCdMinutes} min`);
-  let remain = secs;
-  countdownTimer = setInterval(async () => {
-    if (!autoModeOn) { clearInterval(countdownTimer); return; }
-    remain--;
-    if (remain <= 0) { clearInterval(countdownTimer); await startAutoGame(); }
-  }, 1000);
-}
-
-async function startAutoGame() {
-  if (!autoModeOn) return;
-  try {
-    calledNumbers = [];
-    await setState('game/countdown', { active: false });
-    await setState('game/calledNumbers', []);
-    await setState('game/pendingWinner', null);
-    await setState('game/winners', null);
-    await setState('game/paid', false);
-    await setState('game/status', { started: true, autoStarted: true });
-    await setState('autoMode/phase', 'playing');
-    console.log('🎮 Game Started!');
-
-    const callSpeed = (await getState('autoMode/callSpeed')) || 6000;
-    await addBotsIfNeeded();
-
-    // ── cards ሙሉ ለሙሉ 0 ከሆነ → countdown ይደገማል ──
-    const currentCards = (await getState('game/confirmedNumbers')) || {};
-    if (Object.keys(currentCards).length === 0) {
-      console.log('⚠️ Cards 0 ነው — countdown ይደገማል');
-      broadcast({ type: 'waiting_players', current: 0, needed: 1 });
-      await startAutoCountdown();
-      return;
-    }
-
-    setTimeout(() => { autoCallNumber(callSpeed); }, 2000);
-  } catch(e) {
-    console.error('❌ startAutoGame error:', e.message);
-    setTimeout(() => { if (autoModeOn) startAutoCountdown(); }, 10000);
-  }
-}
-
-async function addBotsIfNeeded() {
-  try {
-    const enabled = await getState('smartBot/enabled');
-    if (!enabled) return;
-
-    const minCards = (await getState('smartBot/minCards')) || 5;
-    const allCards = (await getState('game/confirmedNumbers')) || {};
-
-    const totalCards = Object.keys(allCards).length;
-    const botsNeeded = Math.max(0, minCards - totalCards);
-    if (botsNeeded === 0) return;
-
-    const bet = (await getState('game/bet')) || 0;
-    const pct = (await getState('game/percent')) || 80;
-
-    for (let i = 0; i < botsNeeded; i++) {
-      const botId = `bot_${Date.now()}_${i}`;
-      const botName = `Bot${Math.floor(Math.random() * 9000) + 1000}`;
-      await pool.query(
-        'INSERT INTO users(uid,display,balance,is_bot) VALUES($1,$2,$3,true) ON CONFLICT(uid) DO UPDATE SET display=$2',
-        [botId, botName, bet * 10]
-      );
-      const cardId = String(Math.floor(Math.random() * 900000) + 100000);
-      if (!allCards[cardId]) {
-        allCards[cardId] = botId;
-        await pool.query('UPDATE users SET balance = balance - $1 WHERE uid=$2', [bet, botId]);
-      }
-    }
-
-    await setState('game/confirmedNumbers', allCards);
-    const total = Object.keys(allCards).length;
-    const newTotal = bet * total;
-    const newPrize = total < 5 ? newTotal : Math.floor(newTotal * (pct / 100));
-    await setState('game/prize', newPrize);
-    await setState('game/total', newTotal);
-    await updateAnalytics('botBet', bet * botsNeeded);
-
-    console.log(`🤖 Added ${botsNeeded} bots. Total cards: ${total}, prize: ${newPrize}`);
-  } catch(e) { console.error('❌ addBotsIfNeeded error:', e.message); }
-}
-
-async function autoCallNumber(speed) {
-  if (!autoModeOn) return;
-  clearInterval(callTimer);
-
-  const allCards = (await getState('game/confirmedNumbers')) || {};
-  console.log(`📋 Cards at game start: ${Object.keys(allCards).length}`);
-
-  if (Object.keys(allCards).length === 0) {
-    console.log('⚠️ No cards found! Skipping to next round...');
-    await scheduleNextRound();
-    return;
-  }
-
-  const usersSnap = await pool.query('SELECT uid, display, is_bot FROM users');
-  const allUsers = {};
-  usersSnap.rows.forEach(r => { allUsers[r.uid] = { display: r.display, is_bot: r.is_bot }; });
-
-  const cardInfoMap = {}, realCards = [], botCards = [];
-  for (let cardId in allCards) {
-    const uid = allCards[cardId];
-    const isBot = allUsers[uid]?.is_bot === true;
-    const name = allUsers[uid]?.display || String(uid);
-    const entry = { user: uid, displayName: name, cardId, isBot };
-    cardInfoMap[cardId] = entry;
-    if (isBot) botCards.push(entry);
-    else realCards.push(entry);
-  }
-
-  console.log(`🎮 Real cards: ${realCards.length}, Bot cards: ${botCards.length}`);
-
-  const bet = (await getState('game/bet')) || 0;
-  gamePct = (await getState('game/percent')) || 80;
-  const realBetsTotal = bet * realCards.length;
-  const botBetsTotal  = bet * botCards.length;
-
-  const totalCards = Object.keys(allCards).length;
-  const totalBetAmount = bet * totalCards;
-  const prize = totalCards < 5 ? totalBetAmount : Math.floor(totalBetAmount * (gamePct / 100));
-  await setState('game/prize', prize);
-
-  const botWinPercent = (await getState('autoMode/botWinPercent')) ?? 50;
-  const roll = Math.floor(Math.random() * 100) + 1;
-  let targetCard = null;
-  if (roll <= botWinPercent) {
-    targetCard = botCards.length > 0
-      ? botCards[Math.floor(Math.random() * botCards.length)]
-      : realCards.length > 0 ? realCards[Math.floor(Math.random() * realCards.length)] : null;
-  } else {
-    targetCard = realCards.length > 0
-      ? realCards[Math.floor(Math.random() * realCards.length)]
-      : botCards.length > 0 ? botCards[Math.floor(Math.random() * botCards.length)] : null;
-  }
-
-  if (!targetCard) {
-    console.log('⚠️ No target card — scheduling next round');
-    await scheduleNextRound();
-    return;
-  }
-
-  const targetBoard = generateBoard(hashSeed(Number(targetCard.cardId)));
-  const allBoards = {};
-  for (let cardId in cardInfoMap) allBoards[cardId] = generateBoard(hashSeed(Number(cardId)));
-
-  // ══ FIX: neededNums = አንድ random winning line ብቻ ══
-  const neededNums = getWinningLine(targetBoard);
-  console.log(`🎯 Target: ${targetCard.cardId} (${targetCard.isBot ? 'BOT' : 'REAL'}) | Line: [${neededNums.join(',')}]`);
-
-  // ══ Game start ላይ አንድ ጊዜ ብቻ ያነባል — DB load ይቀንሳል ══
-  const noBotBias = (await getState('autoMode/noBotBias')) ?? 0.50;
-  console.log(`⚙️ noBotBias: ${noBotBias}`);
-
-  callTimer = setInterval(async () => {
-    try {
-      if (!autoModeOn) { clearInterval(callTimer); return; }
-
-      const pend = await getState('game/pendingWinner');
-      if (pend && !pend.announced) {
-        clearInterval(callTimer);
-        startAutoAnnounce(realBetsTotal, botBetsTotal);
-        return;
-      }
-
-      const used = new Set(calledNumbers);
-      const remaining = [...Array(75)].map((_, i) => i + 1).filter(n => !used.has(n));
-
-      if (!remaining.length) {
-        clearInterval(callTimer);
-        for (let cardId in allCards) {
-          const uid = allCards[cardId];
-          if (allUsers[uid]?.is_bot) continue;
-          await pool.query('UPDATE users SET balance = balance + $1 WHERE uid=$2', [bet, uid]);
-          const r = await pool.query('SELECT balance FROM users WHERE uid=$1', [uid]);
-          broadcast({ type: 'balance', uid, balance: r.rows[0]?.balance || 0 });
-          await pool.query(
-            'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-            [uid, `⚠️ Game ሳይጠናቀቅ ተዘጋ — ${bet} ብር ተመለሰ!`, Date.now()]
-          );
-        }
-        await setState('game/announcement', { type: 'no_winner', message: 'ምንም አሸናፊ አልተገኘም', time: Date.now() });
-        await scheduleNextRound();
-        return;
-      }
-
-      // ══ FIX: neededRemaining = target winning line ውስጥ ያልወጡ ቁጥሮች ══
-      const neededRemaining = neededNums.filter(n => !calledNumbers.includes(n));
-
-      const rand = Math.random();
-      let n;
-      if (neededRemaining.length <= 3 && neededRemaining.length > 0 && rand < noBotBias) {
-        // Target line ን ለማጠናቀቅ needed number ይምረጥ
-        n = neededRemaining[Math.floor(Math.random() * neededRemaining.length)];
-      } else {
-        // ሙሉ random — fair ነው፣ target አትጎዳ
-        n = remaining[Math.floor(Math.random() * remaining.length)];
-      }
-
-      calledNumbers.push(n);
-      const called = (await getState('game/calledNumbers')) || [];
-      called.push(n);
-      await setState('game/calledNumbers', called);
-      console.log(`📢 ${getLetter(n)}${n} | needed: [${neededRemaining.join(',')}]`);
-
-      const winners = [];
-      for (let cardId in allBoards)
-        if (checkWin(allBoards[cardId], calledNumbers))
-          winners.push({ ...cardInfoMap[cardId], time: Date.now() });
-
-      if (winners.length > 0) {
-        clearInterval(callTimer);
-        console.log(`🏆 Winner found after ${calledNumbers.length} calls`);
-        await setState('game/pendingWinner', { winners, prize, announced: false, time: Date.now() });
-        startAutoAnnounce(realBetsTotal, botBetsTotal);
-      }
-    } catch(e) { console.error('❌ callNumber error:', e.message); }
-  }, speed);
-}
-
-async function startAutoAnnounce(realBetsTotal, botBetsTotal) {
-  if (!autoModeOn) return;
-  clearAllTimers();
-  await setState('autoMode/phase', 'announcing');
-  console.log('🎉 Winner found! Announcing in 5 seconds...');
-  let count = 5;
-  announceTimer = setInterval(async () => {
-    count--;
-    console.log(`⏳ Announcing in ${count}s...`);
-    if (count <= 0) {
-      clearInterval(announceTimer);
-      announceTimer = null;
-      await announceWinner(realBetsTotal, botBetsTotal);
-      await scheduleNextRound();
-    }
-  }, 1000);
-}
-
-async function announceWinner(realBetsTotal, botBetsTotal) {
-  try {
-    const data = await getState('game/pendingWinner');
-    if (!data) return;
-    const { winners, prize } = data;
-    const share = Math.floor(prize / winners.length);
-
-    let realWinShare = 0;
-    let botWinShare = 0;
-    let botWon = false;
-
-    for (let w of winners) {
-      if (w.isBot) {
-        botWon = true;
-        botWinShare += share;
-      } else {
-        realWinShare += share;
-        await pool.query('UPDATE users SET balance = balance + $1 WHERE uid=$2', [share, w.user]);
-        const r = await pool.query('SELECT balance FROM users WHERE uid=$1', [w.user]);
-        broadcast({ type: 'balance', uid: w.user, balance: r.rows[0]?.balance || 0 });
-        await pool.query(
-          'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-          [w.user, `🎉 Round ${roundNumber} — አሸነፍክ! ${w.displayName}!\n💰 ${share} ብር balance ላይ ታከለ!\n🎴 Card #${w.cardId}\n🕐 ${new Date().toLocaleTimeString('am-ET')}`, Date.now()]
-        );
-      }
-    }
-
-    const winnersObj = {};
-    winners.forEach((w, i) => { winnersObj[i] = { ...w, prize: share }; });
-    await setState('game/winners', winnersObj);
-
-    for (const w of winners) {
-      await pool.query(
-        'INSERT INTO all_winners(uid,display_name,card_id,prize,is_bot,time) VALUES($1,$2,$3,$4,$5,$6)',
-        [w.user, w.displayName, w.cardId, share, w.isBot || false, Date.now()]
-      );
-    }
-
-    const winnerPayload = {
-      type: 'winner',
-      winners,
-      prize,
-      share,
-      calledNumbers,
-      time: Date.now()
-    };
-    broadcast(winnerPayload);
-
-    broadcast({
-      type: 'winner_popup',
-      winners: winners.filter(w => !w.isBot),
-      share,
-      prize,
-      calledNumbers,
-      time: Date.now()
-    });
-
-    await setState('game/announcement', { type: 'winner', winners, prize, share, time: Date.now(), calledNumbers });
-
-    // ══ TELEGRAM GROUP WINNER ANNOUNCE ══
-    try {
-      const BOT_TOKEN = process.env.BOT_TOKEN || '';
-      const GROUP_ID = '-1003570659417';
-
-      if (BOT_TOKEN && GROUP_ID) {
-        const intervalMins = (await getState('settings/groupAnnounceInterval')) || 0;
-
-        if (intervalMins > 0) {
-          const intervalMs = intervalMins * 60 * 1000;
-          const lastSent = (await getState('settings/lastGroupAnnounce')) || 0;
-
-          if (Date.now() - lastSent >= intervalMs) {
-            await setState('settings/lastGroupAnnounce', Date.now());
-
-            const winnerLines = winners.map(w =>
-              `🏆 <b>${w.displayName}</b>`
-            ).join('\n');
-
-            const msg = [
-              `🎉 <b>Round ${roundNumber} — አሸናፊ ተገኘ!</b>`,
-              ``,
-              winnerLines,
-              ``,
-              `💰 Prize: <b>${share} ብር</b>`,
-              `🔢 Numbers Called: <b>${calledNumbers.length}</b>`,
-              `🕐 ${new Date().toLocaleTimeString('am-ET')}`,
-              ``,
-              `🎮 ጨዋታ ለመቀጠል Bot ይጠቀሙ!`
-            ].join('\n');
-
-            const bodyData = JSON.stringify({
-              chat_id: GROUP_ID,
-              text: msg,
-              parse_mode: 'HTML',
-              reply_markup: {
-                inline_keyboard: [[
-                  { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
-                ]]
-              }
-            });
-
-            await new Promise((resolve) => {
-              const opts = {
-                hostname: 'api.telegram.org',
-                path: `/bot${BOT_TOKEN}/sendMessage`,
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Content-Length': Buffer.byteLength(bodyData)
-                }
-              };
-              const r2 = https.request(opts, (r) => {
-                let d = '';
-                r.on('data', c => d += c);
-                r.on('end', () => {
-                  console.log('📢 Group announce sent:', d.slice(0, 120));
-                  resolve();
-                });
-              });
-              r2.on('error', (e) => {
-                console.error('❌ Group announce error:', e.message);
-                resolve();
-              });
-              r2.write(bodyData);
-              r2.end();
-            });
-
-            console.log('✅ Winner announced to Telegram group!');
-          } else {
-            console.log('⏭ Group announce skipped — interval not reached');
-          }
-        } else {
-          console.log('⏭ Group announce off — interval is 0');
-        }
-      }
-    } catch(e) {
-      console.error('❌ Telegram group announce error:', e.message);
-    }
-    // ══ END TELEGRAM GROUP ANNOUNCE ══
-
-    await setState('game/paid', true);
-    await setState('game/pendingWinner', { ...data, announced: true });
-
-    setTimeout(async () => {
-      await setState('game/status', { started: false, waitingRestart: true });
-    }, 6000);
-
-    await updateAnalytics('totalPaidOut', realWinShare);
-    const roundHouseProfit = realBetsTotal - realWinShare;
-    await updateAnalytics('houseProfit', roundHouseProfit);
-    await updateAnalytics('botWin', botWinShare);
-
-    const todayStr = new Date().toISOString().split('T')[0];
-    const history = (await getState('analytics/history')) || [];
-    const todayIdx = history.findIndex(h => h.date === todayStr);
-    if (todayIdx >= 0) {
-      history[todayIdx].houseProfit = (history[todayIdx].houseProfit || 0) + roundHouseProfit;
-      history[todayIdx].botBet = (history[todayIdx].botBet || 0) + botBetsTotal;
-      history[todayIdx].botWin = (history[todayIdx].botWin || 0) + botWinShare;
-      history[todayIdx].rounds = (history[todayIdx].rounds || 0) + 1;
-      if (botWon) history[todayIdx].botWins = (history[todayIdx].botWins || 0) + 1;
-      else history[todayIdx].playerWins = (history[todayIdx].playerWins || 0) + 1;
-    } else {
-      history.push({
-        date: todayStr,
-        houseProfit: roundHouseProfit,
-        botBet: botBetsTotal,
-        botWin: botWinShare,
-        rounds: 1,
-        botWins: botWon ? 1 : 0,
-        playerWins: botWon ? 0 : 1
-      });
-    }
-    await setState('analytics/history', history.slice(-30));
-
-    console.log(`✅ Round done! realBets:${realBetsTotal} botBets:${botBetsTotal} paidOut:${realWinShare} houseProfit:${roundHouseProfit} botWon:${botWon}`);
-  } catch(e) { console.error('❌ announceWinner error:', e.message); }
-}
-
-// ══ ኢትዮጵያ ጠዋት 12:00 (6:00 AM UTC+3) reset key ══
-function getEthiopianDayKey() {
-  // UTC+3 ሰዓት ያሰላል
-  const now = new Date();
-  const etMs = now.getTime() + (3 * 60 * 60 * 1000); // UTC+3
-  const etDate = new Date(etMs);
-  // ጠዋት 6:00 AM UTC+3 = Ethiopian 12:00 ጠዋት
-  // ስለዚህ ቀን key = ቀኑ ጠዋት 6:00 AM ጀምሮ ቀጣዩ 6:00 AM ድረስ
-  const hour = etDate.getUTCHours();
-  const dateStr = etDate.toISOString().split('T')[0];
-  // 6:00 AM በፊት ከሆነ ቀዳሚው ቀን key ይሆናል
-  if (hour < 6) {
-    const prevDay = new Date(etMs - 24 * 60 * 60 * 1000);
-    return prevDay.toISOString().split('T')[0];
-  }
-  return dateStr;
-}
-
-async function scheduleNextRound() {
-  if (!autoModeOn) return;
-  try {
-    const todayStr = getEthiopianDayKey();
-    const lastReset = await getState('analytics/lastResetDate');
-    if (lastReset !== todayStr) {
-      await setState('analytics/lastResetDate', todayStr);
-      roundNumber = 1;
-      await setState('autoMode/round', roundNumber);
-      console.log('🔄 Ethiopian Daily Reset (12:00 ጠዋት):', todayStr);
-    }
-
-    roundNumber++;
-    await setState('autoMode/round', roundNumber);
-    await setState('game/calledNumbers', []);
-    await setState('game/status', { started: false });
-    await setState('game/winners', null);
-
-    setTimeout(async () => {
-      await setState('game/pendingWinner', null);
-      await setState('game/announcement', null);
-    }, 10000);
-
-    await setState('game/paid', false);
-    await setState('game/confirmedNumbers', {});
-    await setState('game/prize', 0);
-    await setState('game/total', 0);
-    calledNumbers = [];
-
-    await pool.query('DELETE FROM users WHERE is_bot = true');
-
-    await setState('autoMode/phase', 'countdown');
-    setTimeout(async () => { if (autoModeOn) await startAutoCountdown(); }, 3000);
-  } catch(e) {
-    console.error('❌ scheduleNextRound error:', e.message);
-    setTimeout(() => { if (autoModeOn) startAutoCountdown(); }, 15000);
-  }
-}
-
-setTimeout(async () => {
-  try {
-    const autoOn = await getState('autoMode/on');
-    if (autoOn === true) {
-      console.log('🔄 Restoring auto mode after restart...');
-      autoModeOn = true;
-      autoCdMinutes = (await getState('autoMode/cdMinutes')) || 3;
-      roundNumber = (await getState('autoMode/round')) || 1;
-      gamePct = (await getState('game/percent')) || 80;
-      const gameStatus = await getState('game/status');
-      if (gameStatus?.started) {
-        await scheduleNextRound();
-      } else {
-        await startAutoCountdown();
-      }
-    }
-  } catch(e) { console.error('❌ Restore error:', e.message); }
-}, 3000);
-
-setInterval(async () => {
-  try {
-    await pool.query('DELETE FROM notifications WHERE time < $1', [Date.now() - (7 * 24 * 60 * 60 * 1000)]);
-    await pool.query(`DELETE FROM all_winners WHERE id NOT IN (SELECT id FROM all_winners ORDER BY time DESC LIMIT 500)`);
-    await pool.query('DELETE FROM promotions WHERE active=false AND created_at < $1', [Date.now() - (30 * 24 * 60 * 60 * 1000)]);
-
-    const lastReset = (await getState('analytics/lastFullReset')) || 0;
-    const fiveDays = 5 * 24 * 60 * 60 * 1000;
-    if (Date.now() - lastReset >= fiveDays) {
-      await pool.query('DELETE FROM analytics');
-      await setState('analytics/history', []);
-      await setState('analytics/lastFullReset', Date.now());
-      console.log('🔄 Analytics full reset (5 days)');
-    }
-
-    console.log('✅ Auto cleanup done');
-  } catch(e) { console.error('Cleanup error:', e.message); }
-}, 24 * 60 * 60 * 1000);
-
-// ══ ADMIN CONTROL ENDPOINTS ══
-app.post('/admin/auto-start', async (req, res) => {
-  try {
-    await setState('autoMode/on', true);
-    autoModeOn = true;
-    autoCdMinutes = (await getState('autoMode/cdMinutes')) || 3;
-    roundNumber = (await getState('autoMode/round')) || 1;
-    startAutoCountdown();
-    res.json({ ok: true, msg: '✅ Auto mode started!' });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/admin/auto-stop', async (req, res) => {
-  try {
-    await setState('autoMode/on', false);
-    autoModeOn = false;
-    clearAllTimers();
-    await setState('autoMode/phase', 'idle');
-    await setState('game/countdown', { active: false });
-    res.json({ ok: true, msg: '✅ Auto mode stopped!' });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/admin/set-settings', async (req, res) => {
-  try {
-    const { bet, percent, cdMinutes, callSpeed, botWinPercent, botMinCards, noBotBias } = req.body;
-    if (bet !== undefined) await setState('game/bet', Number(bet));
-    if (percent !== undefined) {
-      await setState('game/percent', Number(percent));
-      gamePct = Number(percent);
-    }
-    if (cdMinutes !== undefined) await setState('autoMode/cdMinutes', Number(cdMinutes));
-    if (callSpeed !== undefined) await setState('autoMode/callSpeed', Number(callSpeed));
-    if (botWinPercent !== undefined) await setState('autoMode/botWinPercent', Number(botWinPercent));
-    if (botMinCards !== undefined) await setState('smartBot/minCards', Number(botMinCards));
-    if (noBotBias !== undefined) await setState('autoMode/noBotBias', Number(noBotBias));
-    res.json({ ok: true, msg: '✅ Settings saved!' });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/set-state', async (req, res) => {
-  try {
-    const { key, value } = req.body;
-    await setState(key, value);
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/start-auto', async (req, res) => {
-  try {
-    const { cdMinutes, callSpeed } = req.body;
-    if (cdMinutes) await setState('autoMode/cdMinutes', Number(cdMinutes));
-    if (callSpeed) await setState('autoMode/callSpeed', Number(callSpeed));
-    await setState('autoMode/on', true);
-    autoModeOn = true;
-    autoCdMinutes = cdMinutes || autoCdMinutes;
-    startAutoCountdown();
-    res.json({ ok: true, msg: '✅ Auto started!' });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-// ══ AGENT ENDPOINTS ══
-app.post('/withdrawal-accept', async (req, res) => {
-  try {
-    const { key, agentId } = req.body;
-    if (!key || !agentId) return res.json({ ok: false, msg: 'Missing data' });
-    const allWd = JSON.parse(
-      (await pool.query("SELECT value FROM game_state WHERE key='bot/withdrawals'")).rows[0]?.value || '{}'
-    );
-    if (!allWd[key]) return res.json({ ok: false, msg: 'Not found' });
-    const now = Date.now();
-    const LOCK_MS = 3 * 60 * 1000;
-    if (allWd[key].status === 'accepted' && allWd[key].acceptedBy !== agentId && now - (allWd[key].acceptedAt || 0) < LOCK_MS) {
-      return res.json({ ok: false, msg: '⚠️ ሌላ Agent ወስዷል!' });
-    }
-    const myActive = Object.entries(allWd).find(
-      ([k, v]) => v.status === 'accepted' && v.acceptedBy === agentId && k !== key
-    );
-    if (myActive) return res.json({ ok: false, msg: '⚠️ አሁን ያለህን Request አጠናቅ!' });
-    allWd[key].status = 'accepted';
-    allWd[key].acceptedBy = agentId;
-    allWd[key].acceptedAt = now;
-    await setState('bot/withdrawals', allWd);
-    res.json({ ok: true, msg: '✅ Request ተቀበልክ! 3 ደቂቃ አለህ.' });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/withdrawal-release', async (req, res) => {
-  try {
-    const { key, agentId } = req.body;
-    if (!key || !agentId) return res.json({ ok: false, msg: 'Missing data' });
-    const allWd = JSON.parse(
-      (await pool.query("SELECT value FROM game_state WHERE key='bot/withdrawals'")).rows[0]?.value || '{}'
-    );
-    if (!allWd[key]) return res.json({ ok: false, msg: 'Not found' });
-    if (allWd[key].acceptedBy !== agentId) return res.json({ ok: false, msg: '❌ ይህ request ያንተ አይደለም!' });
-    allWd[key].status = 'pending';
-    allWd[key].acceptedBy = null;
-    allWd[key].acceptedAt = null;
-    await setState('bot/withdrawals', allWd);
-    res.json({ ok: true, msg: '↩ Request ለሌላ Agent ተለቀቀ!' });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post(
-  '/withdrawal-paid',
-  multer({ storage: multer.memoryStorage() }).single('photo'),
-  async (req, res) => {
-    try {
-      const { key, agentId } = req.body;
-      const file = req.file;
-      if (!key || !agentId) return res.json({ ok: false, msg: 'Missing data' });
-      const allWd = JSON.parse(
-        (await pool.query("SELECT value FROM game_state WHERE key='bot/withdrawals'")).rows[0]?.value || '{}'
-      );
-      const wd = allWd[key];
-      if (!wd) return res.json({ ok: false, msg: 'Not found' });
-      if (wd.acceptedBy !== agentId) return res.json({ ok: false, msg: '❌ ይህ request ያንተ አይደለም!' });
-
-      const uid = String(wd.user_id);
-      const amount = wd.amount || 0;
-      const method = wd.method || 'ባንክ';
-      const account = wd.account || '—';
-      const BOT_TOKEN = process.env.BOT_TOKEN || '';
-      const agents = JSON.parse(
-        (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
-      );
-      const agentCode = agents[agentId]?.code || agentId;
-
-      if (file && BOT_TOKEN) {
-        try {
-          const boundary = '----FormBoundary' + Date.now();
-          const caption = `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`;
-          const body = Buffer.concat([
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${uid}\r\n`),
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption}\r\n`),
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="screenshot.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
-            file.buffer,
-            Buffer.from(`\r\n--${boundary}--\r\n`),
-          ]);
-          await new Promise((resolve) => {
-            const opts = {
-              hostname: 'api.telegram.org',
-              path: `/bot${BOT_TOKEN}/sendPhoto`,
-              method: 'POST',
-              headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': body.length }
-            };
-            const r2 = require('https').request(opts, (r) => { let d=''; r.on('data',c=>d+=c); r.on('end',()=>{console.log('📸 TG photo:',d.slice(0,80));resolve();}); });
-            r2.on('error', () => resolve());
-            r2.write(body); r2.end();
-          });
-        } catch(e) { console.error('❌ TG photo error:', e.message); }
-      }
-
-      allWd[key].status = 'approved';
-      await setState('bot/withdrawals', allWd);
-      await updateAnalytics('totalWithdrawals', amount);
-
-      await pool.query(
-        "UPDATE game_state SET value='0' WHERE key=$1",
-        [`users/${uid}/pending_withdrawal`]
-      );
-
-      await pool.query(
-        'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-        [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`, Date.now()]
-      );
-      broadcast({ type: 'withdrawal_approved', key, uid, amount });
-      res.json({ ok: true });
-    } catch(e) { res.json({ ok: false, msg: e.message }); }
-  }
-);
-
-app.post('/agent-verify', async (req, res) => {
-  try {
-    const { name, idNumber, password } = req.body;
-    const agents = JSON.parse(
-      (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
-    );
-    const agent = agents[name];
-    if (!agent) return res.json({ ok: false, msg: '❌ Agent አልተመዘገበም!' });
-    if (String(agent.id_number) !== String(idNumber))
-      return res.json({ ok: false, msg: '❌ የግል ቁጥር ትክክል አይደለም!' });
-    const agentPass =
-      (await pool.query("SELECT value FROM game_state WHERE key='settings/agent_password'")).rows[0]?.value?.replace(/"/g, '') || 'agent2025';
-    if (password !== agentPass)
-      return res.json({ ok: false, msg: '❌ Password ትክክል አይደለም!' });
-    res.json({ ok: true, agentName: name });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-// ══ DB ENDPOINTS ══
-app.get('/db-get', async (req, res) => {
-  try {
-    const { path } = req.query;
-    if (!path) return res.json(null);
-
-    const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [path]);
-    if (r.rows.length) {
-      try { return res.json(JSON.parse(r.rows[0].value)); }
-      catch { return res.json(r.rows[0].value); }
-    }
-
-    const prefix = path.endsWith('/') ? path : path + '/';
-    const r2 = await pool.query(
-      'SELECT key, value FROM game_state WHERE key LIKE $1',
-      [prefix + '%']
-    );
-    if (!r2.rows.length) return res.json(null);
-
-    const result = {};
-    for (const row of r2.rows) {
-      const subKey = row.key.slice(prefix.length);
-      try { result[subKey] = JSON.parse(row.value); }
-      catch { result[subKey] = row.value; }
-    }
-    return res.json(result);
-
-  } catch(e) { res.json(null); }
-});
-
-app.post('/db-set', async (req, res) => {
-  try {
-    const { path, value } = req.body;
-    if (!path) return res.json({ ok: false });
-    if (value === null || value === undefined) {
-      await pool.query('DELETE FROM game_state WHERE key=$1', [path]);
-    } else {
-      await pool.query(
-        'INSERT INTO game_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
-        [path, JSON.stringify(value)]
-      );
-    }
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.post('/db-push', async (req, res) => {
-  try {
-    const { path, value } = req.body;
-    if (!path) return res.json({ ok: false });
-    const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [path]);
-    let existing = {};
-    if (r.rows.length) {
-      try { existing = JSON.parse(r.rows[0].value); } catch { existing = {}; }
-    }
-    const key = String(Date.now()) + Math.random().toString(36).slice(2,6);
-    existing[key] = value;
-    await pool.query(
-      'INSERT INTO game_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
-      [path, JSON.stringify(existing)]
-    );
-    res.json({ ok: true, key });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.get('/fix-pending', async (req, res) => {
-  try {
-    const { uid } = req.query;
-    await pool.query(
-      "INSERT INTO game_state(key,value) VALUES($1,'0') ON CONFLICT(key) DO UPDATE SET value='0'",
-      [`users/${uid}/pending_withdrawal`]
-    );
-    res.json({ ok: true });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-// ══ CLOUDINARY CLEANUP ══
-app.post('/clear-cloudinary', async (req, res) => {
-  try {
-    const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
-
-    const activePromos = await pool.query('SELECT photo_url FROM promotions WHERE active=true AND photo_url IS NOT NULL');
-    const activeUrls = new Set(activePromos.rows.map(r => r.photo_url).filter(Boolean));
-
-    const resources = await new Promise((resolve) => {
-      const options = {
-        hostname: 'api.cloudinary.com',
-        path: `/v1_1/${CLOUDINARY_CLOUD}/resources/image?max_results=100`,
-        method: 'GET',
-        headers: { 'Authorization': `Basic ${auth}` }
-      };
-      const req2 = https.request(options, (r) => {
-        let d = '';
-        r.on('data', c => d += c);
-        r.on('end', () => {
-          try { resolve(JSON.parse(d).resources || []); }
-          catch { resolve([]); }
-        });
-      });
-      req2.on('error', () => resolve([]));
-      req2.end();
-    });
-
-    let deleted = 0;
-    for (const resource of resources) {
-      const url = resource.secure_url;
-      if (!activeUrls.has(url)) {
-        await new Promise((resolve) => {
-          const postData = JSON.stringify({ public_ids: [resource.public_id] });
-          const options = {
-            hostname: 'api.cloudinary.com',
-            path: `/v1_1/${CLOUDINARY_CLOUD}/resources/image/upload`,
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Basic ${auth}`,
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(postData)
-            }
-          };
-          const req2 = https.request(options, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
-          req2.on('error', resolve);
-          req2.write(postData); req2.end();
-        });
-        deleted++;
-      }
-    }
-
-    console.log(`🗑️ Cloudinary cleanup: ${deleted} images deleted`);
-    res.json({ ok: true, deleted, total: resources.length, kept: resources.length - deleted });
-  } catch(e) {
-    console.error('❌ Cloudinary cleanup error:', e.message);
-    res.json({ ok: false, msg: e.message });
-  }
-});
-
-// ══ SCHEDULED GROUP ANNOUNCE ══
-setInterval(async () => {
-  try {
-    const intervalMins = (await getState('settings/groupAnnounceInterval')) || 0;
-    if (!intervalMins) return;
-    const intervalMs = intervalMins * 60 * 1000;
-    const lastSent = (await getState('settings/lastGroupAnnounce')) || 0;
-    if (Date.now() - lastSent < intervalMs) return;
-    await setState('settings/lastGroupAnnounce', Date.now());
-    const BOT_TOKEN = process.env.BOT_TOKEN || '';
-    const GROUP_ID = '-1003570659417';
-    if (!BOT_TOKEN) return;
-
-    const r = await pool.query(
-      'SELECT display_name, card_id, prize, time FROM all_winners ORDER BY time DESC LIMIT 1'
-    );
-    if (!r.rows.length) return;
-    const w = r.rows[0];
-
-    const msg = [
-      `🏆 <b>ቅርብ ጊዜ አሸናፊ!</b>`,
-      ``,
-      `👤 <b>${w.display_name}</b>`,
-      `🎴 Card #${w.card_id}`,
-      `💰 Prize: <b>${w.prize} ብር</b>`,
-      `🕐 ${new Date(Number(w.time)).toLocaleTimeString('am-ET')}`,
-      ``,
-      `🎮 ጨዋታ ለመቀጠል Bot ይጠቀሙ!`
-    ].join('\n');
-
-    const bodyData = JSON.stringify({
-      chat_id: GROUP_ID,
-      text: msg,
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
-        ]]
-      }
-    });
-
-    await new Promise((resolve) => {
-      const opts = {
-        hostname: 'api.telegram.org',
-        path: `/bot${BOT_TOKEN}/sendMessage`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) }
-      };
-      const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
-      r2.on('error', resolve);
-      r2.write(bodyData); r2.end();
-    });
-
-    console.log(`✅ Scheduled group announce sent!`);
-  } catch(e) { console.error('❌ Scheduled announce error:', e.message); }
-}, 60 * 1000);
-
-app.post('/set-group-announce-interval', async (req, res) => {
-  try {
-    const { minutes } = req.body;
-    await setState('settings/groupAnnounceInterval', Number(minutes));
-    res.json({ ok: true, msg: `✅ ${minutes} ደቂቃ set ተደረገ!` });
-  } catch(e) { res.json({ ok: false, msg: e.message }); }
-});
-
-app.get('/all-balances', async (req, res) => {
-  try {
-    const r = await pool.query('SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false');
-    const balances = {};
-    r.rows.forEach(row => {
-      balances[row.uid] = {
-        balance: Number(row.balance),
-        last_activity: row.last_activity ? Number(row.last_activity) : null
-      };
-    });
-    res.json(balances);
-  } catch(e) { res.json({}); }
-});
-
-// ══ BOT USERS ══
-app.get('/bot-users', async (req, res) => {
-  try {
-    const now = Date.now();
-    const LIVE_MS = 5 * 60 * 1000;
-    const r = await pool.query(
-      'SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false'
-    );
-    const users = {};
-    r.rows.forEach(row => {
-      const lastActivity = row.last_activity ? Number(row.last_activity) : null;
-      users[row.uid] = {
-        uid:          row.uid,
-        name:         row.display || row.uid,
-        balance:      Number(row.balance || 0),
-        last_activity: lastActivity,
-        is_live:      lastActivity !== null && (now - lastActivity) < LIVE_MS,
-        joined_at:    '',
-      };
-    });
-    res.json({ ok: true, users });
-  } catch(e) {
-    res.json({ ok: false, users: {}, msg: e.message });
-  }
-});
-
-// ══ EXTRACT SMS ══
-app.post('/extract-sms', (req, res) => {
-  try {
-    const { text } = req.body;
-    if (!text) return res.json({ refs: [], amount: 0 });
-
-    const cleaned = text
-      .replace(/(https?:\/\/\S+)\s*\n\s*(\/\S+)/g, '$1$2')
-      .replace(/((?:DE|FT)[A-Z0-9]*)\n([A-Z0-9]+)/gi, '$1$2');
-
-    const refs = [];
-    const addRef = (r) => {
-      r = r.toUpperCase().trim();
-      if (r && !refs.includes(r)) refs.push(r);
-    };
-
-    for (const m of cleaned.matchAll(/\/([A-Z0-9]{8,20})-\d+/gi))
-      addRef(m[1]);
-    for (const m of cleaned.matchAll(/\/BranchReceipt\/([A-Z0-9]{8,20})[&\-]/gi))
-      addRef(m[1]);
-    for (const m of cleaned.matchAll(/[?&]id=([A-Z0-9]{8,24})/gi))
-      addRef(m[1].slice(0, 14));
-    for (const m of cleaned.matchAll(/Ref\s+No\s+(FT[A-Z0-9]{6,16})/gi))
-      addRef(m[1]);
-    for (const m of cleaned.matchAll(/bank\s+transaction\s+number\s+is\s+(FT[A-Z0-9]{6,16})/gi))
-      addRef(m[1]);
-    for (const m of cleaned.matchAll(/transaction\s+number\s+is\s+([A-Z]{2}[A-Z0-9]{6,14})/gi))
-      addRef(m[1]);
-    for (const m of cleaned.matchAll(/\/receipt\/([A-Z0-9]{8,16})/gi))
-      addRef(m[1]);
-    for (const m of cleaned.matchAll(/\b(FT[A-Z0-9]{6,16})\b/gi))
-      addRef(m[1]);
-    for (const m of cleaned.matchAll(/\b(DE[A-Z0-9]{6,14})\b/gi))
-      addRef(m[1]);
-
-    let amount = 0;
-    const amtPatterns = [
-      /credited\s+with\s+ETB\s+([\d,]+\.?\d*)/i,
-      /has\s+been\s+credited\s+with\s+ETB\s+([\d,]+\.?\d*)/i,
-      /received\s+ETB\s+([\d,]+\.?\d*)/i,
-      /you\s+have\s+received\s+ETB\s+([\d,]+\.?\d*)/i,
-      /transferred?\s+ETB\s+([\d,]+\.?\d*)/i,
-      /ETB\s+([\d,]+\.?\d*)/i,
-      /([\d,]+\.?\d*)\s*ብር/i,
-    ];
-    for (const pat of amtPatterns) {
-      const m = cleaned.match(pat);
-      if (m) {
-        const val = parseFloat(m[1].replace(/,/g, '').replace(/\.$/, ''));
-        if (val > 0) { amount = val; break; }
-      }
-    }
-
-    const bankKeywords = [
-      'from: 127', 'from: cbe',
-      'ethio telecom',
-      'credited with etb',
-      'has been credited',
-      'you have received etb',
-      'received etb',
-      'transferred etb',
-      'transaction number is',
-      'bank transaction number',
-      'branchreceipt',
-      'mbreciept.cbe',
-      'apps.cbe.com.et',
-      'ref no ft',
-      'thank you for banking with cbe',
-      'thank you for using telebirr',
-    ];
-    const lowerText = cleaned.toLowerCase();
-    const is_bank = bankKeywords.some(k => lowerText.includes(k))
-      || /\bFT[A-Z0-9]{6,16}\b/i.test(cleaned)
-      || /\bDE[A-Z0-9]{6,14}\b/i.test(cleaned);
-
-    console.log(`[extract-sms] refs=${JSON.stringify(refs)} amount=${amount} is_bank=${is_bank}`);
-
-    res.json({ refs, amount, is_bank, cleaned: cleaned.slice(0, 300) });
-
-  } catch (err) {
-    console.error('[extract-sms] error:', err);
-    res.status(500).json({ refs: [], amount: 0, error: err.message });
-  }
-});
-
-app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
-  try {
-    const smsText = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    console.log('📱 SMS received:', smsText.slice(0, 100));
-    const body = JSON.stringify({ text: smsText });
-    const options = {
-      hostname: '127.0.0.1',
-      port: 9000,
-      path: '/sms',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      }
-    };
-    const r2 = http.request(options, (r) => {
-      let d = '';
-      r.on('data', c => d += c);
-      r.on('end', () => res.json({ status: 'ok' }));
-    });
-    r2.on('error', (e) => {
-      console.log('❌ Bot.py connection error:', e.message);
-      res.json({ status: 'ok' });
-    });
-    r2.write(body);
-    r2.end();
-  } catch(e) {
-    console.log('❌ SMS error:', e.message);
-    res.json({ status: 'ok' });
-  }
-});
-
-// ── Auto-release expired locks ──
-setInterval(async () => {
-  try {
-    const LOCK_MS = 3 * 60 * 1000;
-    const now = Date.now();
-
-    const r = await pool.query(
-      "SELECT value FROM game_state WHERE key='bot/withdrawals'"
-    );
-    const withdrawals = r.rows.length ? JSON.parse(r.rows[0].value) : {};
-
-    let changed = false;
-    for (const [key, wd] of Object.entries(withdrawals)) {
-      if (wd.status !== 'accepted') continue;
-      if (!wd.acceptedAt) continue;
-      if (now - wd.acceptedAt > LOCK_MS) {
-        withdrawals[key].status = 'pending';
-        withdrawals[key].acceptedBy = null;
-        withdrawals[key].acceptedAt = null;
-        changed = true;
-        console.log(`⏰ Auto-released: ${key}`);
-      }
-    }
-
-    if (changed) {
-      await setState('bot/withdrawals', withdrawals);
-    }
-  } catch(e) {
-    console.error('❌ Auto-release error:', e.message);
-  }
-}, 30 * 1000);
-
-// ══ DELETE USER ══
-app.post('/delete-user', async (req, res) => {
-  try {
-    const { uid } = req.body;
-    if (!uid) return res.json({ ok: false, msg: 'uid missing' });
-    const secret = req.body.secret;
-    const config = await pool.query("SELECT value FROM game_state WHERE key='adminConfig'");
-    const adminPass = JSON.parse(config.rows[0]?.value || '{}').loginPassword;
-    if (!secret || secret !== adminPass) {
-      return res.json({ ok: false, msg: 'Unauthorized' });
-    }
-
-    await pool.query('DELETE FROM users WHERE uid=$1', [uid]);
-
-    const keys = [
-      `users/${uid}`,
-      `temp/${uid}`,
-      `botstate_${uid}`,
-      `tempwd_${uid}_amount`,
-      `tempwd_${uid}_method`,
-      `referrals/${uid}`,
-      `displayNames/${uid}`,
-    ];
-    for (const k of keys) {
-      await pool.query('DELETE FROM game_state WHERE key=$1', [k]);
-      await pool.query('DELETE FROM game_state WHERE key LIKE $1', [k + '/%']);
-    }
-
-    await pool.query('DELETE FROM notifications WHERE uid=$1', [uid]);
-
-    console.log(`🗑️ User deleted: ${uid}`);
-    res.json({ ok: true });
-  } catch(e) {
-    console.error('❌ delete-user error:', e.message);
-    res.json({ ok: false, msg: e.message });
-  }
-});
-
-// ══ AGENT HEARTBEAT ══
-const agentStatus = {};
-
-app.post('/agent-heartbeat', (req, res) => {
-  const { agentId, status, activeRequests, lastSeen } = req.body;
-  if (!agentId) return res.json({ ok: false, msg: 'agentId required' });
-
-  agentStatus[agentId] = {
-    status:         status || 'online',
-    activeRequests: activeRequests || 0,
-    lastSeen:       lastSeen || new Date().toISOString(),
-    updatedAt:      Date.now()
-  };
-
-  clearTimeout(agentStatus[agentId]._timer);
-  agentStatus[agentId]._timer = setTimeout(() => {
-    if (agentStatus[agentId]) {
-      agentStatus[agentId].status = 'offline';
-    }
-  }, 45000);
-
-  broadcast({ type: 'agent_status_update', agents: sanitizeAgents() });
-  res.json({ ok: true });
-});
-
-app.get('/agent-status', (req, res) => {
-  res.json({ ok: true, agents: sanitizeAgents() });
-});
-
-function sanitizeAgents() {
-  const result = {};
-  for (const [id, data] of Object.entries(agentStatus)) {
-    result[id] = {
-      status:         data.status,
-      activeRequests: data.activeRequests,
-      lastSeen:       data.lastSeen,
-      updatedAt:      data.updatedAt
-    };
-  }
-  return result;
-}
-
-app.post('/open-bot', async (req, res) => {
-  try {
-    const { userId, type, amount } = req.body;
-    const BOT_TOKEN = process.env.BOT_TOKEN || '';
-    const startParam = type === 'withdraw' ? `withdraw_${userId}` : `deposit_${amount}`;
-    const msgText = type === 'withdraw' ? '🏧 ገንዘብ ማውጣት:' : `💰 ${amount} ብር ማስገባት:`;
-    const btnText = type === 'withdraw' ? '🏧 ገንዘብ አውጣ' : '💳 ገንዘብ አስገባ';
-
-    console.log('💳 open-bot called:', userId, type, amount);
-
-    const bodyData = JSON.stringify({
-      chat_id: userId,
-      text: msgText,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: btnText, url: `https://t.me/Firstanywharebingobot?start=${startParam}` }
-        ]]
-      }
-    });
-
-    await new Promise((resolve) => {
-      const opts = {
-        hostname: 'api.telegram.org',
-        path: `/bot${BOT_TOKEN}/sendMessage`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) }
-      };
-      const r2 = https.request(opts, (r) => {
-        let d = '';
-        r.on('data', c => d += c);
-        r.on('end', () => { console.log('📩 TG response:', d.slice(0,100)); resolve(); });
-      });
-      r2.on('error', resolve);
-      r2.write(bodyData); r2.end();
-    });
-
-    res.json({ ok: true });
-  } catch(e) {
-    console.error('❌ open-bot error:', e.message);
-    res.json({ ok: false, msg: e.message });
-  }
-});
-
-app.listen(process.env.PORT || 3000, () => console.log('🚀 Server running!'));
+
+        return jsonify({"ok": True, "users": result})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+# ══════════════════════════════════════════
+# DELETE USER ENDPOINT — Bot DB ላይ ሙሉ ለሙሉ ይሰርዛል
+# ══════════════════════════════════════════
+@flask_app.route("/delete-user", methods=["POST"])
+def delete_user():
+    try:
+        data = flask_request.get_json(force=True, silent=True) or {}
+        uid  = str(data.get("uid", "")).strip()
+        if not uid or not uid.isdigit():
+            return jsonify({"ok": False, "msg": "Invalid uid"}), 400
+
+        # ── ሁሉም bot data ይሰርዛሉ ──
+        db_delete(f"displayNames/{uid}")
+        db_delete(f"users/{uid}")
+        db_delete(f"temp/{uid}")
+        db_delete(f"botstate_{uid}")
+        db_delete(f"referrals/{uid}")
+        db_delete(f"tempwd_{uid}_amount")
+        db_delete(f"tempwd_{uid}_method")
+
+        # ── In-memory cache ያጸዳ ──
+        cache_del(f"botstate_{uid}")
+        cache_del(f"temp_{uid}")
+        cache_del(f"tempwd_{uid}_amount")
+        cache_del(f"tempwd_{uid}_method")
+
+        # ── Server.js balance ሰርዝ ──
+        try:
+            requests.post(f"{SERVER}/delete-user",
+                json={"uid": uid}, timeout=5)
+        except:
+            pass
+
+        # ── Admin notify ──
+        try:
+            bot.send_message(ADMIN_ID,
+                f"🗑️ <b>User ተሰርዟል</b>\n👤 <code>{uid}</code>")
+        except:
+            pass
+
+        print(f"DELETE USER: {uid}")
+        return jsonify({"ok": True, "msg": f"User {uid} deleted"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+# ══════════════════════════════════════════
+# SMS WEBHOOK
+# ══════════════════════════════════════════
+@flask_app.route("/sms", methods=["POST"])
+def sms_webhook():
+    try:
+        sms_text = ""
+        if flask_request.is_json:
+            data = flask_request.get_json(force=True, silent=True) or {}
+            sms_text = (data.get("text","") or data.get("sms","") or
+                        data.get("message","") or data.get("body",""))
+        if not sms_text:
+            sms_text = (flask_request.form.get("text","") or
+                        flask_request.form.get("sms","") or
+                        flask_request.form.get("body","") or
+                        flask_request.form.get("message",""))
+        if not sms_text:
+            try:
+                raw = flask_request.get_data(as_text=True)
+                if raw:
+                    import urllib.parse
+                    parsed = urllib.parse.parse_qs(raw)
+                    sms_text = (parsed.get("text",[""])[0] or
+                                parsed.get("body",[""])[0] or
+                                parsed.get("sms",[""])[0])
+                if not sms_text:
+                    sms_text = raw
+            except:
+                pass
+        print(f"SMS received: {sms_text[:100] if sms_text else 'EMPTY'}")
+        if not sms_text:
+            return jsonify({"status": "ok"}), 200
+        threading.Thread(target=handle_sms, args=(sms_text,), daemon=True).start()
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        print(f"SMS webhook error: {e}")
+        return jsonify({"status": "ok"}), 200
+
+# ══════════════════════════════════════════
+# BROADCAST ENDPOINT
+# ══════════════════════════════════════════
+@flask_app.route("/broadcast", methods=["POST"])
+def broadcast():
+    photo_bytes = None
+    text = ""
+    if flask_request.content_type and "multipart" in flask_request.content_type:
+        text = flask_request.form.get("text", "")
+        photo_file = flask_request.files.get("photo")
+        if photo_file:
+            photo_bytes = photo_file.read()
+        if not photo_bytes:
+            photo_url = flask_request.form.get("photo_url", "")
+            if photo_url:
+                try:
+                    r = requests.get(photo_url, timeout=10)
+                    if r.status_code == 200:
+                        photo_bytes = r.content
+                except Exception as e:
+                    print(f"Photo URL error: {e}")
+    else:
+        data = flask_request.get_json() or {}
+        text = data.get("text", "")
+
+    try:
+        r = requests.get(f"{SERVER}/game-state", timeout=10)
+        display_names = r.json().get("displayNames", {})
+    except:
+        display_names = {}
+
+    sent = 0
+    for uid in display_names.keys():
+        if not str(uid).isdigit():
+            continue
+        try:
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("🎮 Play",
+                   web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+            if photo_bytes:
+                bot.send_photo(int(uid), io.BytesIO(photo_bytes), caption=text, reply_markup=kb)
+            else:
+                bot.send_message(int(uid), text, reply_markup=kb)
+            sent += 1
+            time.sleep(0.05)
+        except Exception as e:
+            print(f"Broadcast error {uid}: {e}")
+
+    return jsonify({"ok": True, "msg": f"✅ {sent} users ተላከ!"})
+
+def run_flask():
+    port = int(os.environ.get("BOT_PORT", 9000))
+    flask_app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False)
+
+threading.Thread(target=run_flask, daemon=True).start()
+
+# ══════════════════════════════════════════
+# REF / AMOUNT EXTRACTORS
+# ══════════════════════════════════════════
+def extract_refs(text):
+    """
+    REF formats from real SMS:
+    Telebirr:  "transaction number is DE33HPM4FF"
+    Telebirr:  "by transaction number DE37HMUH8D"
+    Telebirr+CBE: "telebirr transaction number is DE36I14OA4 and your bank transaction number is FT26124S18CL"
+    CBE url1:  "https://Mbreciept.cbe.com.et/FT261174ZP1W-41057146"
+    CBE url2:  "https://apps.cbe.com.et:100/BranchReceipt/FT261246TDJJ&41057146"
+    CBE url3:  "https://apps.cbe.com.et:100/?id=FT26118W65DX41057146"
+    CBE ref:   "with Ref No FT26118W65DX"
+    """
+    if not text: return []
+    refs = []
+
+    def add(r):
+        r = r.upper()
+        if r not in refs:
+            refs.append(r)
+
+    # CBE Mbreciept URL: /FT261174ZP1W-41057146  → REF=FT261174ZP1W
+    for m in re.finditer(r'/([A-Z0-9]{8,20})-\d+', text, re.IGNORECASE):
+        add(m.group(1))
+
+    # CBE BranchReceipt URL: /BranchReceipt/FT261246TDJJ&41057146
+    for m in re.finditer(r'/BranchReceipt/([A-Z0-9]{8,20})[&\-]', text, re.IGNORECASE):
+        add(m.group(1))
+
+    # CBE "with Ref No FTxxxxxxxx"
+    for m in re.finditer(r'Ref\s+No\s+(FT[A-Z0-9]{6,16})', text, re.IGNORECASE):
+        add(m.group(1))
+
+    # "bank transaction number is FTxxxxxxx"
+    for m in re.finditer(r'bank\s+transaction\s+number\s+is\s+(FT[A-Z0-9]{6,16})', text, re.IGNORECASE):
+        add(m.group(1))
+
+    # "transaction number is DExxxxxxx" or "by transaction number DExxxxxxx"
+    for m in re.finditer(r'transaction\s+number\s+is\s+([A-Z]{2}[A-Z0-9]{6,14})', text, re.IGNORECASE):
+        add(m.group(1))
+
+    # receipt URL: /receipt/DExxxxxxx
+    for m in re.finditer(r'/receipt/([A-Z0-9]{8,16})', text, re.IGNORECASE):
+        add(m.group(1))
+
+    # Bare FT... anywhere in text
+    for m in re.finditer(r'\b(FT[A-Z0-9]{6,16})\b', text, re.IGNORECASE):
+        add(m.group(1))
+
+    # Bare DE... anywhere in text
+    for m in re.finditer(r'\b(DE[A-Z0-9]{6,14})\b', text, re.IGNORECASE):
+        add(m.group(1))
+
+    return refs
+
+def extract_amount(text):
+    """
+    SMS formats supported (from real messages):
+    Telebirr:  "You have received ETB 50.00 ..."
+    Telebirr:  "You have received  ETB 300.00 by transaction number ..."
+    CBE:       "has been credited with ETB 1,200.00 ..."
+    CBE:       "has been Credited with ETB 2,000.00 ..."
+    CBE:       "credited with ETB 2."   (whole number, dot at end)
+    CBE:       "received ETB 2,700.00 from account ..."
+    """
+    patterns = [
+        r'credited\s+with\s+ETB\s+([\d,]+\.?\d*)',
+        r'received\s+ETB\s+([\d,]+\.?\d*)',
+        r'transferred\s+ETB\s+([\d,]+\.?\d*)',
+        r'transfer(?:red)?\s+ETB\s+([\d,]+\.?\d*)',
+        r'ETB\s+([\d,]+\.?\d*)',
+        r'([\d,]+\.?\d*)\s*ብር',
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            raw = m.group(1).replace(',', '').rstrip('.')
+            try:
+                val = float(raw)
+                if val > 0:
+                    return val
+            except:
+                continue
+    return 0.0
+
+# ══════════════════════════════════════════
+# FIX 1: Outgoing SMS ignore
+# transferred/sent/paid SMS ን ignore ያደርጋል
+# ══════════════════════════════════════════
+def is_bank_sms(text):
+    if not text: return False
+    t = text.lower()
+
+    # ── Outgoing SMS → ignore (admin ሌላ ሰው ላይ ሲልክ የሚደርስ SMS) ──
+    outgoing_keywords = [
+        "you have transferred",
+        "you have sent",
+        "you have paid",
+        "transferred to",
+        "sent to",
+        "paid to",
+        "your transfer of",
+        "your payment of",
+        "has been debited",
+        "deducted from your account",
+        "amount debited",
+        "etb has been sent",
+        "successfully transferred",
+        "successfully sent",
+        "successfully paid",
+    ]
+    if any(k in t for k in outgoing_keywords):
+        return False
+
+    keywords = [
+        "from: 127", "from: cbe",
+        "ethio telecom",
+        "credited with etb",
+        "has been credited",
+        "you have received etb",
+        "received etb",
+        "transferred etb",
+        "transaction number is",
+        "bank transaction number",
+        "branchreceipt",
+        "mbreciept.cbe",
+        "apps.cbe.com.et",
+        "ref no ft",
+        "thank you for banking with cbe",
+        "thank you for using telebirr",
+    ]
+    if any(k in t for k in keywords): return True
+    if re.search(r'\bFT[A-Z0-9]{6,16}\b', text, re.IGNORECASE): return True
+    if re.search(r'\bDE[A-Z0-9]{6,14}\b', text, re.IGNORECASE): return True
+    return False
+
+def is_dup_ref(ref):
+    used = db_get("bot/used_refs") or {}
+    return ref.upper() in used
+
+def save_ref(ref, uid, amount):
+    db_set(f"bot/used_refs/{ref.upper()}",
+           {"user_id": uid, "amount": amount, "time": datetime.now().isoformat()})
+
+def is_dup_screenshot(file_id):
+    h = hashlib.sha256(file_id.encode()).hexdigest()
+    used = db_get("bot/used_hashes") or {}
+    return h in used
+
+def save_screenshot_hash(file_id, uid, amount):
+    h = hashlib.sha256(file_id.encode()).hexdigest()
+    db_set(f"bot/used_hashes/{h}",
+           {"user_id": uid, "amount": amount, "time": datetime.now().isoformat()})
+
+def has_pending(uid):
+    payments = db_get("payments") or {}
+    for p in payments.values():
+        if not isinstance(p, dict): continue
+        if str(p.get("user_id")) == uid and p.get("status") == "pending":
+            return True
+    return False
+
+# ══════════════════════════════════════════
+# SAVED ACCOUNTS HELPERS
+# ══════════════════════════════════════════
+def get_saved_accounts(uid):
+    data = db_get(f"users/{uid}/saved_accounts")
+    if isinstance(data, dict):
+        return data
+    return {}
+
+def save_account(uid, method, account):
+    db_set(f"users/{uid}/saved_accounts/{method}", account)
+
+# ══════════════════════════════════════════
+# SMS HANDLER
+# ══════════════════════════════════════════
+def handle_sms(sms_text):
+    try:
+        # ── URL line break አጣምር ──
+        sms_text = re.sub(r'(https?://\S+)\s*\n\s*(/\S+)', r'\1\2', sms_text)
+
+        # ── FT/DE line break አጣምር ──
+        sms_text = re.sub(r'((?:DE|FT)[A-Z0-9]*)\n([A-Z0-9]+)', r'\1\2', sms_text)
+
+        refs = extract_refs(sms_text)
+        if not refs:
+            bot.send_message(ADMIN_ID,
+                f"⚠️ <b>SMS ደረሰ ግን REF አልተገኘም</b>\n\n<code>{sms_text[:200]}</code>")
+            return
+
+        amount = extract_amount(sms_text)
+
+        payments = db_get("payments") or {}
+        matched_pid = matched_uid = matched_ref = None
+
+        for pid, pay in payments.items():
+            if not isinstance(pay, dict): continue
+            if pay.get("status") != "pending": continue
+            pay_ref = (pay.get("ref") or "").upper()
+            if pay_ref in [r.upper() for r in refs]:
+                matched_pid = pid
+                matched_uid = str(pay.get("user_id"))
+                matched_ref = pay_ref
+                break
+
+        if matched_pid and matched_uid:
+            for ref in refs:
+                if is_dup_ref(ref):
+                    bot.send_message(ADMIN_ID, f"⚠️ Duplicate SMS REF: <code>{ref}</code>")
+                    return
+            for ref in refs: save_ref(ref, matched_uid, amount)
+            do_approve(matched_pid, matched_uid, amount, matched_ref, sms_text)
+            return
+
+        photo_pool = {k.upper(): v for k, v in (db_get("bot/photo_pool") or {}).items()}
+        matched_photo = matched_photo_ref = None
+        for ref in refs:
+            if ref.upper() in photo_pool:
+                matched_photo = photo_pool[ref.upper()]
+                matched_photo_ref = ref.upper()
+                break
+
+        if matched_photo:
+            for ref in refs:
+                if is_dup_ref(ref):
+                    bot.send_message(ADMIN_ID, f"⚠️ Duplicate SMS REF: <code>{ref}</code>")
+                    return
+            for r in (matched_photo.get("all_refs") or [matched_photo_ref]):
+                db_delete(f"bot/photo_pool/{r.upper()}")
+            for ref in refs: save_ref(ref, matched_photo["uid"], amount)
+            do_approve(matched_photo["pid"], matched_photo["uid"], amount,
+                       matched_photo_ref, sms_text)
+        else:
+            for ref in refs:
+                db_set(f"bot/sms_pool/{ref.upper()}", {
+                    "ref": ref.upper(), "amount": amount,
+                    "text": sms_text[:300],
+                    "saved_at": datetime.now().timestamp(),
+                    "all_refs": refs,
+                })
+            bot.send_message(ADMIN_ID,
+                f"📥 <b>SMS ተቀበለ — Screenshot ይጠብቃል</b>\n\n"
+                f"📋 REFs: {' | '.join(f'<code>{r}</code>' for r in refs)}\n"
+                f"💰 {amount} ብር")
+    except Exception as e:
+        print(f"handle_sms error: {e}")
+        bot.send_message(ADMIN_ID, f"❌ SMS processing error: {e}")
+
+# ══════════════════════════════════════════
+# GROQ OCR
+# ══════════════════════════════════════════
+def extract_refs_from_screenshot(file_id):
+    try:
+        import base64
+        file_info = bot.get_file(file_id)
+        file_url  = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+        response  = requests.get(file_url, timeout=15)
+        image_data = base64.b64encode(response.content).decode("utf-8")
+        groq_response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}",
+                     "Content-Type": "application/json"},
+            json={
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
+                        {"type": "text",
+                         "text": "Extract ALL transaction reference numbers from this payment screenshot. "
+                                 "Look for: FT followed by letters/numbers (CBE), DE followed by letters/numbers (Telebirr). "
+                                 "Reply with ONLY the reference numbers separated by comma. Example: DE49IZZB05,FT26124HX4GY. "
+                                 "If not found, reply: NONE"}
+                    ]
+                }],
+                "max_tokens": 100
+            },
+            timeout=30
+        )
+        result   = groq_response.json()
+        ref_text = result["choices"][0]["message"]["content"].strip()
+        print(f"Groq REF: {ref_text}")
+        if ref_text == "NONE" or not ref_text: return []
+        parts = [p.strip().upper() for p in ref_text.split(",")]
+        refs  = []
+        for part in parts:
+            extracted = extract_refs(part)
+            if extracted:
+                for r in extracted:
+                    if r not in refs: refs.append(r)
+            elif re.match(r'^[A-Z0-9]{8,20}$', part):
+                if part not in refs: refs.append(part)
+        return refs
+    except Exception as e:
+        print(f"Groq OCR error: {e}")
+        return []
+
+# ══════════════════════════════════════════
+# APPROVE DEPOSIT
+# ══════════════════════════════════════════
+def do_approve(pid, uid, sms_amount, ref, sms_text=""):
+    """
+    sms_amount — SMS ላይ ያለው ትክክለኛ amount (source of truth)
+    user requested amount ጋር ሳይወዳደር SMS amount ብቻ ይጠቀማል
+    """
+    try:
+        sms_amount = int(sms_amount) if sms_amount else 0
+        if sms_amount <= 0:
+            bot.send_message(ADMIN_ID,
+                f"⚠️ SMS Amount 0 ነው! Manual check:\n👤 <code>{uid}</code>\n📋 <code>{ref}</code>\n\n"
+                f"SMS:\n<code>{sms_text[:200]}</code>")
+            return
+
+        # Payment record ያንብብ (display name ለadmin notification)
+        pay_record = db_get(f"payments/{pid}") or {}
+
+        # SMS amount ይጠቀማል — ትክክለኛ source of truth
+        new_bal = update_balance(uid, sms_amount, "add")
+
+        db_set(f"payments/{pid}/status",         "approved")
+        db_set(f"payments/{pid}/verified",        True)
+        db_set(f"payments/{pid}/ref",             ref)
+        db_set(f"payments/{pid}/amount",          sms_amount)
+        db_set(f"payments/{pid}/sms_amount",      sms_amount)
+        set_temp(uid, None)
+
+        save_ref(ref, uid, sms_amount)
+
+        # ── FIX 2: Approved pid → _cancelled_pids ይጨምር (timeout false message ይቆማል) ──
+        with _cancelled_lock:
+            _cancelled_pids.add(pid)
+
+        try:
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("🎮 Play",
+                   web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+            kb.add(
+                InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"),
+                InlineKeyboardButton("💰 ቀሪ ሂሳብ",   callback_data="balance")
+            )
+            kb.add(
+                InlineKeyboardButton("🏧 ገንዘብ አውጣ", callback_data="withdraw"),
+                InlineKeyboardButton("📊 ታሪክ",       callback_data="history")
+            )
+            bot.send_message(int(uid),
+                f"✅ <b>ገንዘብ ገብቷል!</b>\n\n"
+                f"💰 {sms_amount} ብር ታከለ\n"
+                f"💼 አዲስ ቀሪ ሂሳብ: <b>{new_bal} ብር</b>",
+                reply_markup=kb)
+        except Exception as e:
+            print(f"User notify error: {e}")
+
+        display = pay_record.get("display") or uid
+        bot.send_message(ADMIN_ID,
+            f"✅ <b>Auto Approved!</b>\n\n"
+            f"👤 {display} (<code>{uid}</code>)\n"
+            f"💰 {sms_amount} ብር\n"
+            f"📋 REF: <code>{ref}</code>")
+
+    except Exception as e:
+        print(f"do_approve error: {e}")
+        bot.send_message(ADMIN_ID, f"❌ Approve error: {e}\nREF: {ref}")
+
+# ══════════════════════════════════════════
+# SCREENSHOT HANDLER
+# ══════════════════════════════════════════
+def process_screenshot(m):
+    uid  = str(m.from_user.id)
+    temp = get_temp(uid)
+
+    if not temp:
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"))
+        bot.send_message(m.chat.id,
+            "❗ <b>መጀመሪያ ገንዘብ ማስገቢያ ምረጥ!</b>\n\n"
+            "👇 ገንዘብ አስገባ ተጫን → መጠን ምረጥ → ከዚያ Screenshot ላክ",
+            reply_markup=kb)
+        return
+
+    amount = int(float(temp.get("amount", 0) or 0))
+
+    if amount <= 0:
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"))
+        bot.send_message(m.chat.id,
+            "❗ <b>መጠን አልተመረጠም!</b>\n\nገንዘብ አስገባ ተጫን → መጠን ምረጥ",
+            reply_markup=kb)
+        return
+
+    file_id = m.photo[-1].file_id if m.content_type == "photo" else m.document.file_id
+
+    if is_dup_screenshot(file_id):
+        bot.send_message(m.chat.id, "🚫 ይህ Screenshot አስቀድሞ ጥቅም ላይ ዋሏል!")
+        set_temp(uid, None)
+        return
+
+    bot.send_message(m.chat.id, "🔍 Screenshot እየተነበበ ነው...")
+
+    refs = extract_refs_from_screenshot(file_id)
+
+    retry_count = int(temp.get("retry_count", 0))
+
+    if not refs:
+        retry_count += 1
+        update_temp(uid, "retry_count", retry_count)
+
+        if retry_count < 3:
+            bot.send_message(m.chat.id,
+                f"⚠️ Screenshot ጥራት የለውም — ድጋሚ ላክ ({retry_count}/3)\n\n"
+                f"📸 <b>ግልጽ የሆነ screenshot ላክ</b>")
+        else:
+            save_screenshot_hash(file_id, uid, amount)
+            result = db_push("payments", {
+                "user_id":          uid,
+                "display":          m.from_user.username or m.from_user.first_name or uid,
+                "amount":           0,
+                "requested_amount": amount,
+                "file_id":          file_id,
+                "ref":              "",
+                "status":           "pending",
+                "time":             int(datetime.now().timestamp() * 1000),
+                "verified":         False,
+            })
+            if result:
+                update_temp(uid, "pid", result.key)
+                update_temp(uid, "retry_count", 0)
+                bot.send_message(m.chat.id, "📸 Screenshot ተቀብሏል!\n\n⏳ Admin እያረጋገጠ ነው...")
+                try:
+                    bot.send_photo(ADMIN_ID, file_id,
+                        caption=f"📸 <b>New Screenshot (REF አልተነበበም)</b>\n\n"
+                                f"👤 {m.from_user.username or m.from_user.first_name} (<code>{uid}</code>)\n"
+                                f"💰 {amount} ብር\n\n⚠️ Admin Panel ላይ ያረጋግጡ")
+                except: pass
+        return
+
+    for ref in refs:
+        if is_dup_ref(ref):
+            bot.send_message(m.chat.id, "🚫 ይህ ደረሰኝ አስቀድሞ ጥቅም ላይ ዋሏል!")
+            set_temp(uid, None)
+            return
+
+    save_screenshot_hash(file_id, uid, amount)
+    update_temp(uid, "retry_count", 0)
+
+    primary_ref = refs[0]
+    stored_ref = temp.get("ref", "")
+    if stored_ref and stored_ref.upper() in refs:
+        primary_ref = stored_ref.upper()
+
+    result = db_push("payments", {
+        "user_id":          uid,
+        "display":          m.from_user.username or m.from_user.first_name or uid,
+        "amount":           0,
+        "requested_amount": amount,
+        "file_id":          file_id,
+        "ref":              primary_ref,
+        "status":           "pending",
+        "time":             int(datetime.now().timestamp() * 1000),
+        "verified":         False,
+    })
+    if not result:
+        bot.send_message(m.chat.id, "❌ Error! እንደገና ሞክር")
+        return
+
+    pid = result.key
+    update_temp(uid, "pid", pid)
+    update_temp(uid, "ref", primary_ref)
+
+    sms_pool = {k.upper(): v for k, v in (db_get("bot/sms_pool") or {}).items()}
+    matched_sms = matched_sms_ref = None
+    for ref in refs:
+        if ref.upper() in sms_pool:
+            matched_sms     = sms_pool[ref.upper()]
+            matched_sms_ref = ref.upper()
+            break
+
+    if matched_sms:
+        for r in (matched_sms.get("all_refs") or [matched_sms_ref]):
+            db_delete(f"bot/sms_pool/{r.upper()}")
+        for ref in refs: save_ref(ref, uid, matched_sms.get("amount", 0))
+        do_approve(pid, uid, matched_sms.get("amount", 0),
+                   matched_sms_ref, matched_sms.get("text", ""))
+    else:
+        for ref in refs:
+            db_set(f"bot/photo_pool/{ref.upper()}", {
+                "ref":      ref.upper(),
+                "all_refs": refs,
+                "pid":      pid,
+                "uid":      uid,
+                "amount":   amount,
+                "file_id":  file_id,
+                "saved_at": datetime.now().timestamp(),
+            })
+        bot.send_message(m.chat.id, "📸 Screenshot ተቀብሏል!\n\n⏳ እየተረጋገጠ ነው...")
+        try:
+            kb = InlineKeyboardMarkup()
+            kb.add(
+                InlineKeyboardButton("✅ ፍቀድ", callback_data=f"ap_{pid}_{uid}"),
+                InlineKeyboardButton("❌ ውድቅ",  callback_data=f"re_{pid}_{uid}")
+            )
+            bot.send_photo(ADMIN_ID, file_id,
+                caption=f"📸 <b>New Screenshot</b>\n\n"
+                        f"👤 {m.from_user.username or m.from_user.first_name} (<code>{uid}</code>)\n"
+                        f"📝 User ጠየቀ: <b>{amount} ብር</b>\n"
+                        f"⚠️ ትክክለኛ amount SMS ሲደርስ ይወሰናል\n"
+                        f"📋 REFs: {' | '.join(f'<code>{r}</code>' for r in refs)}\n\n"
+                        f"⏳ SMS እየጠበቀ ነው...",
+                reply_markup=kb)
+        except: pass
+
+@bot.message_handler(
+    func=lambda m: m.forward_date is not None and m.from_user.id == ADMIN_ID,
+    content_types=["text", "photo", "document"]
+)
+def handle_forward(m):
+    text_to_process = m.text or m.caption or ""
+
+    for ent in (m.entities or m.caption_entities or []):
+        src = m.text or m.caption or ""
+        if ent.type == "url":
+            url = src[ent.offset: ent.offset + ent.length]
+            if url not in text_to_process:
+                text_to_process += " " + url
+
+    if not text_to_process.strip():
+        bot.send_message(ADMIN_ID, "⚠️ Forward ተቀበለ ግን text አልተገኘም")
+        return
+
+    try:
+        r = requests.post(f"{SERVER}/extract-sms",
+            json={"text": text_to_process}, timeout=5)
+        data = r.json()
+        refs   = data.get("refs", [])
+        amount = data.get("amount", 0)
+
+        bot.send_message(ADMIN_ID,
+            f"🔄 <b>Forward ተነበበ</b>\n\n"
+            f"📋 REFs: {' | '.join(f'<code>{r}</code>' for r in refs) or '❌ አልተገኘም'}\n"
+            f"💰 Amount: <b>{amount} ብር</b>")
+
+        threading.Thread(target=handle_sms, args=(text_to_process,), daemon=True).start()
+
+    except Exception as e:
+        bot.send_message(ADMIN_ID, f"❌ Extract error: {e}")
+        threading.Thread(target=handle_sms, args=(text_to_process,), daemon=True).start()
+
+@bot.message_handler(content_types=["photo", "document"])
+def handle_screenshot(m):
+    threading.Thread(target=process_screenshot, args=(m,), daemon=True).start()
+
+# ══════════════════════════════════════════
+# REFERRAL SYSTEM
+# ══════════════════════════════════════════
+def get_referral_link(uid):
+    bot_info = bot.get_me()
+    return f"https://t.me/{bot_info.username}?start=ref{uid}"
+
+def handle_referral_registration(new_uid, referrer_uid):
+    try:
+        if str(new_uid) == str(referrer_uid): return
+        already = db_get(f"users/{new_uid}/referred_by")
+        if already: return
+        db_set(f"users/{new_uid}/referred_by", str(referrer_uid))
+        db_push(f"referrals/{referrer_uid}/list",
+                {"uid": str(new_uid), "time": datetime.now().isoformat()})
+        old_count = db_get(f"referrals/{referrer_uid}/count") or 0
+        new_count = old_count + 1
+        db_set(f"referrals/{referrer_uid}/count", new_count)
+        if new_count == REFERRAL_SMALL_COUNT:
+            _give_referral_bonus(referrer_uid, REFERRAL_SMALL_AMT, new_count)
+        elif new_count == REFERRAL_BIG_COUNT:
+            _give_referral_bonus(referrer_uid, REFERRAL_BIG_AMT, new_count)
+        try:
+            bot.send_message(int(referrer_uid),
+                f"🎉 <b>አዲስ ሰው አስገባህ!</b>\n\n"
+                f"👥 ጠቅላላ Referral: <b>{new_count}</b>\n\n"
+                + (f"⭐ {REFERRAL_SMALL_COUNT - new_count} ሰው ሲጨምር 💰 {REFERRAL_SMALL_AMT} ብር ታገኛለህ!"
+                   if new_count < REFERRAL_SMALL_COUNT
+                   else f"⭐ {REFERRAL_BIG_COUNT - new_count} ሰው ሲጨምር 💰 {REFERRAL_BIG_AMT} ብር ታገኛለህ!"
+                   if new_count < REFERRAL_BIG_COUNT
+                   else "🏆 ትልቅ ሽልማት አሸነፍህ!"))
+        except Exception as e:
+            print(f"Referral notify error: {e}")
+    except Exception as e:
+        print(f"handle_referral_registration error: {e}")
+
+def _give_referral_bonus(referrer_uid, bonus_amount, count):
+    try:
+        new_bal = update_balance(referrer_uid, bonus_amount, "add")
+        db_push(f"referrals/{referrer_uid}/bonuses",
+                {"amount": bonus_amount, "count": count, "time": datetime.now().isoformat()})
+        bot.send_message(int(referrer_uid),
+            f"🏆 <b>Referral Bonus!</b>\n\n"
+            f"👥 {count} ሰው አስገባህ!\n"
+            f"💰 <b>+{bonus_amount} ብር</b> ታከለ!\n"
+            f"💼 አዲስ ቀሪ ሂሳብ: <b>{new_bal} ብር</b>")
+        bot.send_message(ADMIN_ID,
+            f"🏆 <b>Referral Bonus Paid</b>\n"
+            f"👤 <code>{referrer_uid}</code>\n"
+            f"👥 {count} referrals\n"
+            f"💰 {bonus_amount} ብር")
+    except Exception as e:
+        print(f"_give_referral_bonus error: {e}")
+
+def _show_referral(chat_id, uid):
+    try:
+        ref_link  = get_referral_link(uid)
+        ref_count = db_get(f"referrals/{uid}/count") or 0
+        bonuses   = db_get(f"referrals/{uid}/bonuses") or {}
+        total_bonus_earned = sum(
+            b.get("amount", 0) for b in bonuses.values() if isinstance(b, dict)
+        )
+        if ref_count < REFERRAL_SMALL_COUNT:
+            progress = int((ref_count / REFERRAL_SMALL_COUNT) * 10)
+        elif ref_count < REFERRAL_BIG_COUNT:
+            progress = int(((ref_count - REFERRAL_SMALL_COUNT) /
+                            (REFERRAL_BIG_COUNT - REFERRAL_SMALL_COUNT)) * 10)
+        else:
+            progress = 10
+        bar = "🟩" * progress + "⬜" * (10 - progress)
+        text = (
+            f"👥 <b>Referral Program</b>\n\n"
+            f"🔗 <b>የኔ Link፡</b>\n<code>{ref_link}</code>\n\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📊 ያስገባሃቸው ሰዎች: <b>{ref_count}</b>\n"
+            f"💰 ያገኘሃቸው Bonus: <b>{total_bonus_earned} ብር</b>\n\n"
+            f"🏆 <b>ሽልማቶች፡</b>\n\n"
+            f"🥈 <b>{REFERRAL_SMALL_COUNT} ሰው</b> → 💰 <b>{REFERRAL_SMALL_AMT} ብር</b>\n"
+            f"🥇 <b>{REFERRAL_BIG_COUNT} ሰው</b> → 💰 <b>{REFERRAL_BIG_AMT} ብር</b>\n\n"
+            f"📈 <b>Progress:</b> {bar}\n\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💡 Link share አድርግ — ሲመዘገቡ ቀጥታ ትቆጠርላቸዋል!"
+        )
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("🔗 Link ተቀዳ", switch_inline_query=ref_link))
+        bot.send_message(chat_id, text, reply_markup=kb)
+    except Exception as e:
+        print(f"_show_referral error: {e}")
+        bot.send_message(chat_id, "❌ Error! እንደገና ሞክር")
+
+# ══════════════════════════════════════════
+# MENU  — አማርኛ buttons
+# ══════════════════════════════════════════
+def send_menu(chat_id):
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🎮 Play",
+           web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={chat_id}")))
+    kb.add(
+        InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"),
+        InlineKeyboardButton("💰 ቀሪ ሂሳብ",   callback_data="balance")
+    )
+    kb.add(
+        InlineKeyboardButton("🏧 ገንዘብ አውጣ", callback_data="withdraw"),
+        InlineKeyboardButton("📊 ታሪክ",       callback_data="history")
+    )
+    kb.add(InlineKeyboardButton("👥 ወዳጅ ጋብዝ", callback_data="referral"))
+    bot.send_message(chat_id,
+        "🎮 <b>Bingo Pro</b>\n\n"
+        "🎁 <b>አሁን ያሉ Bonuses፡</b>\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "👋 Welcome Bonus  → <b>+20 ብር</b>\n"
+        "👥 ወዳጅ ጋብዝ      → <b>100 እስከ 5000 ብር</b>\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "🏆 Prize Pool — <b>80% ለአሸናፊ!</b>\n\n"
+        "👇 ምረጥ፡",
+        reply_markup=kb)
+
+# ══════════════════════════════════════════
+# /start COMMAND
+# ══════════════════════════════════════════
+@bot.message_handler(commands=["start"])
+def cmd_start(m):
+    uid  = str(m.chat.id)
+    args = m.text.split()
+    referrer_uid = None
+    first = m.from_user.first_name or ""
+    last  = m.from_user.last_name  or ""
+    display = (first + " " + last).strip() or m.from_user.username or uid
+
+    if len(args) > 1 and args[1].startswith("deposit_"):
+        try:
+            amount = int(args[1].split("_")[1])
+            set_temp(uid, {"amount": amount, "retry_count": 0})
+            bot.send_message(m.chat.id,
+                f"✅ <b>{amount} ብር ማስገቢያ</b>\n"
+                f"🏦 CBE: <code>{get_cbe_account()}</code>\n"
+                f"📱 Telebirr: <code>{get_telebirr_account()}</code>\n\n"
+                f"💸 ከፍለህ → 📸 Screenshot ላክ")
+        except: pass
+        return
+
+    if len(args) > 1 and args[1].startswith("withdraw"):
+        bal = get_balance(uid)
+        if bal < MIN_WITHDRAWAL:
+            bot.send_message(m.chat.id,
+                f"❌ ቀሪ ሂሳብ አናሳ!\nቢያንስ: <b>{MIN_WITHDRAWAL} ብር</b>\nቀሪ ሂሳብ: <b>{bal} ብር</b>")
+            return
+        set_botstate(uid, "waiting_wd_amount")
+        bot.send_message(m.chat.id,
+            f"🏧 <b>ገንዘብ ማውጫ</b>\n💰 ቀሪ ሂሳብ: <b>{bal} ብር</b>\n\nምን ያህል ብር? ቁጥር ላክ:")
+        return
+
+    if len(args) > 1 and args[1].startswith("ref"):
+        referrer_uid = args[1][3:]
+
+    is_new, balance = ensure_user(uid, display)
+    db_set(f"displayNames/{uid}", display)
+    db_set(f"users/{uid}/display", display)
+    if is_new:
+        db_set(f"users/{uid}/display",   display)
+        db_set(f"users/{uid}/username",  display)
+        db_set(f"users/{uid}/joined_at", datetime.now().isoformat())
+
+        bot.send_message(m.chat.id,
+            f"🎁 <b>እንኳን ደህና መጣህ {display}!</b>\n\n"
+            f"ወደ Bingo Pro እንኳን ደህና መጣህ! 🎮\n\n"
+            f"🎉 <b>+20 ብር</b> Welcome Bonus ታከለ!\n\n"
+            f"▶️ አሁን መጫወት ትችላለህ!")
+
+        if referrer_uid:
+            threading.Thread(
+                target=handle_referral_registration,
+                args=(uid, referrer_uid), daemon=True
+            ).start()
+
+        try:
+            bot.send_message(ADMIN_ID,
+                f"👤 <b>አዲስ User!</b>\n"
+                f"Name: {display}\n"
+                f"ID: <code>{uid}</code>"
+                + (f"\nRef by: <code>{referrer_uid}</code>" if referrer_uid else ""))
+        except: pass
+    else:
+        db_set(f"users/{uid}/display",  display)
+        db_set(f"users/{uid}/username", display)
+
+    send_menu(m.chat.id)
+
+# ══════════════════════════════════════════
+# COMMANDS
+# ══════════════════════════════════════════
+@bot.message_handler(commands=["balance"])
+def cmd_balance(m):
+    uid = str(m.chat.id)
+    bal = get_balance(uid)
+    pending_wd = db_get(f"users/{uid}/pending_withdrawal") or 0
+    text = f"💰 <b>ቀሪ ሂሳብ: {bal} ብር</b>"
+    if pending_wd:
+        text += f"\n⏳ በመጠባበቅ ላይ ያለ ክፍያ: {pending_wd} ብር"
+    bot.send_message(m.chat.id, text)
+
+@bot.message_handler(commands=["play"])
+def cmd_play(m):
+    uid = str(m.chat.id)
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🎮 Play",
+           web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+    bot.send_message(m.chat.id,
+        "🎮 <b>ጨዋታ ለመጀመር ይጫኑ!</b>",
+        reply_markup=kb)
+
+@bot.message_handler(commands=["deposit"])
+def cmd_deposit(m):
+    uid = str(m.chat.id)
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("💳 50 ብር",   callback_data="pay_50"),
+        InlineKeyboardButton("💳 100 ብር",  callback_data="pay_100"),
+        InlineKeyboardButton("💳 200 ብር",  callback_data="pay_200"),
+        InlineKeyboardButton("💳 500 ብር",  callback_data="pay_500"),
+        InlineKeyboardButton("💳 1000 ብር", callback_data="pay_1000"),
+    )
+    kb.add(InlineKeyboardButton("✏️ ሌላ መጠን ጻፍ", callback_data="pay_custom"))
+    bot.send_message(m.chat.id,
+        "💳 <b>ምን ያህል ብር ማስገባት ትፈልጋለህ?</b>\n\n"
+        "👇 ምረጥ ወይም ✏️ ራስህ ጻፍ:",
+        reply_markup=kb)
+
+@bot.message_handler(commands=["withdraw"])
+def cmd_withdraw(m):
+    uid = str(m.chat.id)
+    bal = get_balance(uid)
+    if bal < MIN_WITHDRAWAL:
+        bot.send_message(m.chat.id,
+            f"❌ ቀሪ ሂሳብ አናሳ!\nቢያንስ: <b>{MIN_WITHDRAWAL} ብር</b>\nቀሪ ሂሳብ: <b>{bal} ብር</b>")
+        return
+    pending_wd = db_get(f"users/{uid}/pending_withdrawal") or 0
+    if pending_wd > 0:
+        bot.send_message(m.chat.id,
+            f"⚠️ <b>አስቀድሞ በመጠባበቅ ላይ ያለ ክፍያ አለዎት!</b>\n\n"
+            f"💰 {pending_wd} ብር እየተጠበቀ ነው\n\n"
+            f"Admin ከፈቀደ በኋላ እንደገና ሞክር")
+        return
+    set_botstate(uid, "waiting_wd_amount")
+    bot.send_message(m.chat.id,
+        f"🏧 <b>ገንዘብ ማውጣት</b>\n"
+        f"💰 ቀሪ ሂሳብ: <b>{bal} ብር</b>\n\n"
+        f"ምን ያህል ብር?\n(ቢያንስ: {MIN_WITHDRAWAL} ብር)\n\nቁጥር ብቻ ላክ:")
+
+@bot.message_handler(commands=["referral"])
+def cmd_referral(m):
+    _show_referral(m.chat.id, str(m.from_user.id))
+
+@bot.message_handler(commands=["admin"])
+def cmd_admin(m):
+    if m.chat.id != ADMIN_ID: return
+    cbe = get_cbe_account()
+    tel = get_telebirr_account()
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(f"✏️ CBE: {cbe}",      callback_data="set_cbe"))
+    kb.add(InlineKeyboardButton(f"✏️ Telebirr: {tel}", callback_data="set_telebirr"))
+    bot.send_message(m.chat.id,
+        f"⚙️ <b>Admin Panel</b>\n\n"
+        f"🏦 CBE: <code>{cbe}</code>\n"
+        f"📱 Telebirr: <code>{tel}</code>",
+        reply_markup=kb)
+
+@bot.message_handler(commands=["stats"])
+def cmd_stats(m):
+    if m.chat.id != ADMIN_ID: return
+    try:
+        r  = requests.get(f"{SERVER}/health", timeout=5)
+        h  = r.json()
+        gs = requests.get(f"{SERVER}/game-state", timeout=5).json()
+        bot.send_message(m.chat.id,
+            f"📊 <b>Stats</b>\n\n"
+            f"👥 Users: {h.get('users', 0)}\n"
+            f"🏆 Winners: {h.get('winners', 0)}\n"
+            f"💰 Total Collected: {gs.get('analytics/totalCollected', 0)} ብር\n"
+            f"💸 Total Paid Out: {gs.get('analytics/totalPaidOut', 0)} ብር\n"
+            f"📈 Total Profit: {gs.get('analytics/totalProfit', 0)} ብር\n"
+            f"🗄️ DB Size: {h.get('db_size', '?')}")
+    except Exception as e:
+        bot.send_message(m.chat.id, f"❌ Stats error: {e}")
+
+@bot.message_handler(commands=["804"])
+def cmd_804(m):
+    if m.chat.id != ADMIN_ID: return
+    try:
+        h  = requests.get(f"{SERVER}/health", timeout=5).json()
+        gs = requests.get(f"{SERVER}/game-state", timeout=5).json()
+
+        collected  = float(gs.get('analytics/totalCollected', 0) or 0)
+        paid_out   = float(gs.get('analytics/totalPaidOut', 0) or 0)
+        profit     = float(gs.get('analytics/houseProfit', 0) or 0)
+        total_dep  = gs.get('analytics/totalDeposits', 0) or 0
+        total_wd   = gs.get('analytics/totalWithdrawals', 0) or 0
+
+        try:
+            bal_r = requests.get(f"{SERVER}/all-balances", timeout=5)
+            balances = bal_r.json()
+            total_user_bal = sum(int(float(v.get('balance', 0) or 0)) for v in balances.values())
+        except:
+            total_user_bal = 0
+
+        bot.send_message(m.chat.id,
+            f"📊 <b>Report — {datetime.now().strftime('%Y-%m-%d %H:%M')}</b>\n\n"
+            f"👥 Users: {h.get('users', 0)}\n"
+            f"🏆 Winners: {h.get('winners', 0)}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💳 Total Deposits: {int(float(total_dep))} ብር\n"
+            f"🏧 Total Withdrawals: {int(float(total_wd))} ብር\n"
+            f"💼 Users Total Balance: {total_user_bal} ብር\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"💰 Game Collected: {int(collected)} ብር\n"
+            f"💸 Game Paid Out: {int(paid_out)} ብር\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📈 Profit: {int(profit)} ብር")
+    except Exception as e:
+        bot.send_message(m.chat.id, f"❌ Error: {e}")
+
+@bot.message_handler(commands=["pending"])
+def show_pending(m):
+    if m.chat.id != ADMIN_ID: return
+    payments = db_get("payments") or {}
+    pending  = [(pid, p) for pid, p in payments.items()
+                if isinstance(p, dict) and p.get("status") == "pending"]
+    if not pending:
+        bot.send_message(m.chat.id, "✅ ምንም pending የለም"); return
+    lines = [f"⏳ <b>Pending ({len(pending)}):</b>\n"]
+    for pid, p in pending[:10]:
+        t = (datetime.fromtimestamp(p.get("time",0)/1000).strftime("%m/%d %H:%M")
+             if p.get("time") else "—")
+        lines.append(f"• {p.get('display','?')} — {p.get('amount',0)} ብር — {t}")
+    bot.send_message(m.chat.id, "\n".join(lines))
+
+@bot.message_handler(commands=["clearpending"])
+def clear_pending(m):
+    if m.chat.id != ADMIN_ID: return
+    parts = m.text.split()
+    if len(parts) < 2:
+        bot.send_message(m.chat.id, "Usage: /clearpending <user_id>"); return
+    uid = parts[1]
+    db_set(f"users/{uid}/pending_withdrawal", 0)
+    set_temp(uid, None)
+    payments = db_get("payments") or {}
+    count = 0
+    for pid, pay in payments.items():
+        if not isinstance(pay, dict): continue
+        if str(pay.get("user_id")) == uid and pay.get("status") == "pending":
+            db_set(f"payments/{pid}/status", "cancelled")
+            count += 1
+    withdrawals = db_get("bot/withdrawals") or {}
+    for wid, w in withdrawals.items():
+        if not isinstance(w, dict): continue
+        if str(w.get("user_id")) == uid and w.get("status") == "pending":
+            db_set(f"bot/withdrawals/{wid}/status", "cancelled")
+    bot.send_message(m.chat.id,
+        f"✅ User <code>{uid}</code> cleared!\n📋 {count} pending cancelled.")
+
+@bot.message_handler(commands=["fixdisplaynames"])
+def fix_display_names(m):
+    if m.chat.id != ADMIN_ID: return
+    bot.send_message(m.chat.id, "⏳ እየሰራ ነው...")
+    users = db_get("users") or {}
+    fixed = 0
+    for uid, data in users.items():
+        if not uid.isdigit(): continue
+        name = (data.get("display") or data.get("username") or "").strip()
+        if name and name != uid:
+            db_set(f"displayNames/{uid}", name)
+            fixed += 1
+    bot.send_message(m.chat.id, f"✅ {fixed} users fixed!")
+
+@bot.message_handler(commands=["givebalance"])
+def cmd_give_balance(m):
+    if m.chat.id != ADMIN_ID: return
+    parts = m.text.split()
+    if len(parts) < 3:
+        bot.send_message(m.chat.id, "Usage: /givebalance <uid> <amount>"); return
+    try:
+        uid = parts[1]; amount = int(parts[2])
+        new_bal = update_balance(uid, amount, "add")
+        bot.send_message(m.chat.id,
+            f"✅ {amount} ብር ተሰጠ!\n👤 <code>{uid}</code>\n💰 ቀሪ ሂሳብ: {new_bal} ብር")
+        try:
+            bot.send_message(int(uid),
+                f"🎁 Admin {amount} ብር ሰጠህ!\n💼 ቀሪ ሂሳብ: <b>{new_bal} ብር</b>")
+        except: pass
+    except Exception as e:
+        bot.send_message(m.chat.id, f"❌ Error: {e}")
+
+@bot.message_handler(commands=["broadcast_all"])
+def cmd_broadcast_all(m):
+    if m.chat.id != ADMIN_ID: return
+    parts = m.text.split(None, 1)
+    if len(parts) < 2:
+        bot.send_message(m.chat.id, "Usage: /broadcast_all <message>"); return
+    msg = parts[1]
+    try:
+        r = requests.get(f"{SERVER}/game-state", timeout=10)
+        display_names = r.json().get("displayNames", {})
+        sent = 0
+        for uid in display_names.keys():
+            if not str(uid).isdigit(): continue
+            try:
+                kb = InlineKeyboardMarkup()
+                kb.add(InlineKeyboardButton("🎮 Play",
+                       web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+                bot.send_message(int(uid), msg, reply_markup=kb)
+                sent += 1
+                time.sleep(0.05)
+            except: pass
+        bot.send_message(m.chat.id, f"✅ {sent} users ተላከ!")
+    except Exception as e:
+        bot.send_message(m.chat.id, f"❌ Error: {e}")
+
+# ══════════════════════════════════════════
+# TEXT HANDLER
+# ══════════════════════════════════════════
+ALLOWED_SMS_SENDERS = [ADMIN_ID]
+
+@bot.message_handler(func=lambda m: True, content_types=["text"])
+def handle_text(m):
+    uid   = str(m.from_user.id)
+    text  = m.text.strip()
+    state = get_botstate(uid)
+
+    print(f"ID:{m.from_user.id} STATE:{repr(state)} TEXT:{text[:50]}")
+
+    if m.from_user.id in ALLOWED_SMS_SENDERS and is_bank_sms(text):
+        threading.Thread(target=handle_sms, args=(text,), daemon=True).start()
+        return
+
+    if state == "waiting_deposit_amount":
+        try:
+            amount = int(text)
+        except ValueError:
+            bot.send_message(m.chat.id, "❌ ቁጥር ብቻ ላክ! ለምሳሌ: <code>750</code>")
+            return
+        if amount < 50:
+            bot.send_message(m.chat.id, "❌ ቢያንስ <b>50 ብር</b> ያስፈልጋል!")
+            return
+        set_botstate(uid, None)
+        set_temp(uid, {"amount": amount, "retry_count": 0})
+        bot.send_message(m.chat.id,
+            f"✅ <b>{amount} ብር ማስገቢያ</b>\n\n"
+            f"🏦 CBE: <code>{get_cbe_account()}</code>\n"
+            f"📱 Telebirr: <code>{get_telebirr_account()}</code>\n\n"
+            f"💸 ከፍለህ → 📸 Screenshot ላክ")
+        return
+
+    if state == "waiting_set_cbe" and m.from_user.id == ADMIN_ID:
+        account = text.strip()
+        if not (account.isdigit() and len(account) == 13):
+            bot.send_message(m.chat.id, "❌ CBE account <b>13 digit</b> ያስፈልጋል!")
+            set_botstate(uid, None)
+            return
+        db_set("bot/settings/cbe_account", account)
+        try:
+            requests.post(f"{SERVER}/save-accounts", json={"cbe": account}, timeout=5)
+        except: pass
+        set_botstate(uid, None)
+        bot.send_message(m.chat.id, f"✅ CBE Account ተቀይሯል!\n🏦 <code>{account}</code>")
+        return
+
+    if state == "waiting_set_telebirr" and m.from_user.id == ADMIN_ID:
+        account = text.strip()
+        if not (account.isdigit() and len(account) == 10):
+            bot.send_message(m.chat.id, "❌ Telebirr <b>10 digit</b> ያስፈልጋል!")
+            set_botstate(uid, None)
+            return
+        db_set("bot/settings/telebirr_account", account)
+        try:
+            requests.post(f"{SERVER}/save-accounts", json={"telebirr": account}, timeout=5)
+        except: pass
+        set_botstate(uid, None)
+        bot.send_message(m.chat.id, f"✅ Telebirr Account ተቀይሯል!\n📱 <code>{account}</code>")
+        return
+
+    if state == "waiting_wd_amount":
+        try:
+            amount = int(text)
+        except ValueError:
+            bot.send_message(m.chat.id, "❌ ቁጥር ብቻ ላክ! ለምሳሌ: <code>500</code>")
+            return
+        balance = get_balance(uid)
+        if amount < MIN_WITHDRAWAL:
+            bot.send_message(m.chat.id, f"❌ ቢያንስ: <b>{MIN_WITHDRAWAL} ብር</b>")
+            return
+        if amount > balance:
+            bot.send_message(m.chat.id, f"❌ ቀሪ ሂሳብ አናሳ!\n💰 ቀሪ ሂሳብ: <b>{balance} ብር</b>")
+            return
+        set_botstate(uid, "waiting_wd_acct_num")
+        cache_set(f"tempwd_{uid}_amount", amount)
+        db_set(f"tempwd_{uid}_amount", amount)
+        kb = InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            InlineKeyboardButton("🏦 CBE",      callback_data="wdm_CBE"),
+            InlineKeyboardButton("📱 Telebirr", callback_data="wdm_Telebirr"),
+            InlineKeyboardButton("🏧 Awash",    callback_data="wdm_Awash"),
+            InlineKeyboardButton("💳 ሌላ",      callback_data="wdm_Other"),
+        )
+        bot.send_message(m.chat.id,
+            f"🏧 <b>{amount} ብር</b>\nምን አይነት account?", reply_markup=kb)
+        return
+
+    if state == "waiting_wd_acct_num":
+        account = text.strip()
+        method  = (cache_get(f"tempwd_{uid}_method") or
+                   db_get(f"tempwd_{uid}_method") or "—")
+        if isinstance(method, str):
+            method = method.strip('"').strip("'")
+
+        if method == "CBE" and not (account.isdigit() and len(account) == 13):
+            bot.send_message(m.chat.id, "❌ CBE account number <b>13 digit</b> ያስገቡ!")
+            set_botstate(uid, None)
+            send_menu(m.chat.id)
+            return
+        elif method == "Telebirr" and not (account.isdigit() and len(account) == 10):
+            bot.send_message(m.chat.id, "❌ Telebirr ስልክ ቁጥር <b>10 digit</b> ያስገቡ!")
+            set_botstate(uid, None)
+            send_menu(m.chat.id)
+            return
+        elif method == "Awash" and not (account.isdigit() and len(account) == 14):
+            bot.send_message(m.chat.id, "❌ Awash account number <b>14 digit</b> ያስገቡ!")
+            set_botstate(uid, None)
+            send_menu(m.chat.id)
+            return
+
+        amount  = (cache_get(f"tempwd_{uid}_amount") or
+                   db_get(f"tempwd_{uid}_amount") or 0)
+        try: amount = int(float(amount))
+        except: amount = 0
+
+        balance = get_balance(uid)
+        pending = db_get(f"users/{uid}/pending_withdrawal") or 0
+        if pending > 0:
+            bot.send_message(m.chat.id,
+                f"⚠️ አስቀድሞ በመጠባበቅ ላይ ያለ ክፍያ አለዎት!\n💰 {pending} ብር እየተጠበቀ ነው።")
+            set_botstate(uid, None)
+            return
+        if amount > balance:
+            bot.send_message(m.chat.id,
+                f"❌ ቀሪ ሂሳብ አናሳ!\n💰 ቀሪ ሂሳብ: <b>{balance} ብር</b>")
+            set_botstate(uid, None)
+            return
+
+        update_balance(uid, amount, "subtract")
+        db_set(f"users/{uid}/pending_withdrawal", amount)
+        save_account(uid, method, account)
+        print(f"DEBUG withdraw saving: uid={uid} amount={amount} method={method} account={account}")
+        result = db_push("bot/withdrawals", {
+            "user_id": uid,
+            "display": m.from_user.username or m.from_user.first_name or uid,
+            "amount":  amount,
+            "method":  method,
+            "account": account,
+            "status":  "pending",
+            "time":    datetime.now().isoformat()
+        })
+        set_botstate(uid, None)
+
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("🎮 Play",
+               web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+        kb.add(
+            InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"),
+            InlineKeyboardButton("💰 ቀሪ ሂሳብ",   callback_data="balance")
+        )
+        kb.add(
+            InlineKeyboardButton("🏧 ገንዘብ አውጣ", callback_data="withdraw"),
+            InlineKeyboardButton("📊 ታሪክ",       callback_data="history")
+        )
+        bot.send_message(m.chat.id,
+            f"✅ <b>እየተላከ ነው!</b>\n\n"
+            f"💰 {amount} ብር\n"
+            f"📲 {method} — <code>{account}</code>\n\n"
+            f"⏳ እስከ 5 ደቂቃ ሊቆይ ይችላል...",
+            reply_markup=kb)
+
+        name = m.from_user.username or m.from_user.first_name
+        if method == "Telebirr":
+            bot.send_message(ADMIN_ID, f"🤖AUTO|{account}|{amount}|{uid}", parse_mode=None)
+        else:
+            bot.send_message(ADMIN_ID,
+                f"🏧 <b>ገንዘብ ማውጣት ጥያቄ</b>\n"
+                f"👤 {name} (<code>{uid}</code>)\n"
+                f"💰 {amount} ብር\n"
+                f"📲 {method} — <code>{account}</code>\n\n"
+                f"⚠️ Admin Panel ላይ ያስተናግዱ")
+        return
+
+    if state:
+        set_botstate(uid, None)
+
+    send_menu(m.chat.id)
+
+# ══════════════════════════════════════════
+# CALLBACK HANDLER
+# ══════════════════════════════════════════
+@bot.callback_query_handler(func=lambda c: True)
+def handle_callback(c):
+    bot.answer_callback_query(c.id)
+    uid  = str(c.from_user.id)
+    data = c.data
+
+    if data == "deposit":
+        kb = InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            InlineKeyboardButton("💳 50 ብር",   callback_data="pay_50"),
+            InlineKeyboardButton("💳 100 ብር",  callback_data="pay_100"),
+            InlineKeyboardButton("💳 200 ብር",  callback_data="pay_200"),
+            InlineKeyboardButton("💳 500 ብር",  callback_data="pay_500"),
+            InlineKeyboardButton("💳 1000 ብር", callback_data="pay_1000"),
+        )
+        kb.add(InlineKeyboardButton("✏️ ሌላ መጠን ጻፍ", callback_data="pay_custom"))
+        bot.send_message(c.message.chat.id,
+            "💳 <b>ምን ያህል ብር ማስገባት ትፈልጋለህ?</b>\n\n"
+            "👇 ምረጥ ወይም ✏️ ራስህ ጻፍ:",
+            reply_markup=kb)
+
+    elif data == "pay_custom":
+        set_botstate(uid, "waiting_deposit_amount")
+        bot.send_message(c.message.chat.id,
+            "✏️ <b>ምን ያህል ብር ማስገባት ትፈልጋለህ?</b>\n\n"
+            "ቁጥር ብቻ ላክ (ቢያንስ <b>50 ብር</b>):\n"
+            "ለምሳሌ: <code>750</code>")
+
+    elif data.startswith("pay_"):
+        amount = int(data.split("_")[1])
+        set_temp(uid, {"amount": amount, "retry_count": 0})
+        bot.send_message(c.message.chat.id,
+            f"✅ <b>{amount} ብር ማስገቢያ</b>\n\n"
+            f"🏦 CBE: <code>{get_cbe_account()}</code>\n"
+            f"📱 Telebirr: <code>{get_telebirr_account()}</code>\n\n"
+            f"💸 ከፍለህ → 📸 Screenshot ላክ")
+
+    elif data == "balance":
+        bal = get_balance(uid)
+        pending_wd = db_get(f"users/{uid}/pending_withdrawal") or 0
+        text = f"💰 <b>ቀሪ ሂሳብ: {bal} ብር</b>"
+        if pending_wd:
+            text += f"\n⏳ በመጠባበቅ ላይ ያለ ክፍያ: {pending_wd} ብር"
+        bot.send_message(c.message.chat.id, text)
+
+    elif data == "withdraw":
+        try:
+            wd_status = requests.get(f"{SERVER}/withdrawal-status", timeout=5).json()
+            wd_enabled = wd_status.get("enabled", True)
+        except:
+            wd_enabled = True
+
+        if not wd_enabled:
+            bot.send_message(c.message.chat.id,
+                "🌙 <b>ገንዘብ ማውጣት አሁን ዝግ ነው</b>\n\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                "⏰ ስርዓቱ በጊዜያዊነት ተዘግቷል\n\n"
+                "✅ በቅርቡ ይከፈታል — ድጋሚ ሞክር!\n"
+                "━━━━━━━━━━━━━━━━━")
+            return
+
+        bal = get_balance(uid)
+        if bal < MIN_WITHDRAWAL:
+            bot.send_message(c.message.chat.id,
+                f"❌ ቀሪ ሂሳብ አናሳ!\nቢያንስ: <b>{MIN_WITHDRAWAL} ብር</b>\nቀሪ ሂሳብ: <b>{bal} ብር</b>")
+            return
+        pending_wd = db_get(f"users/{uid}/pending_withdrawal") or 0
+        if pending_wd > 0:
+            bot.send_message(c.message.chat.id,
+                f"⚠️ <b>አስቀድሞ በመጠባበቅ ላይ ያለ ክፍያ አለዎት!</b>\n\n"
+                f"💰 {pending_wd} ብር እየተጠበቀ ነው\n\n"
+                f"Admin ከፈቀደ በኋላ እንደገና ሞክር")
+            return
+        set_botstate(uid, "waiting_wd_amount")
+        bot.send_message(c.message.chat.id,
+            f"🏧 <b>ገንዘብ ማውጣት</b>\n"
+            f"💰 ቀሪ ሂሳብ: <b>{bal} ብር</b>\n\n"
+            f"ምን ያህል ብር?\n(ቢያንስ: {MIN_WITHDRAWAL} ብር)\n\nቁጥር ብቻ ላክ:")
+
+    elif data == "history":
+        payments  = db_get("payments") or {}
+        deposits  = [p for p in payments.values()
+                     if isinstance(p, dict) and str(p.get("user_id")) == uid]
+
+        withdrawals_all = db_get("bot/withdrawals") or {}
+        withdrawals = [w for w in withdrawals_all.values()
+                       if isinstance(w, dict) and str(w.get("user_id")) == uid]
+
+        if not deposits and not withdrawals:
+            bot.send_message(c.message.chat.id, "📊 ምንም ታሪክ የለም")
+            return
+
+        dep_icons = {"approved": "✅", "rejected": "❌", "pending": "⏳", "cancelled": "🚫"}
+        wd_icons  = {"paid": "✅", "approved": "✅", "pending": "⏳",
+                     "rejected": "❌", "cancelled": "🚫"}
+
+        lines = ["📊 <b>ግብይት ታሪክ:</b>\n"]
+
+        if deposits:
+            deposits.sort(key=lambda x: x.get("time", 0), reverse=True)
+            lines.append("💳 <b>ገንዘብ ማስገቢያ:</b>")
+            for p in deposits[:7]:
+                icon = dep_icons.get(p.get("status"), "❓")
+                amt  = p.get("sms_amount") or p.get("requested_amount") or p.get("amount") or 0
+                t    = (datetime.fromtimestamp(p.get("time", 0) / 1000).strftime("%m/%d %H:%M")
+                        if p.get("time") else "—")
+                lines.append(f"  {icon} {amt} ብር — {t}")
+
+        if withdrawals:
+            lines.append("\n🏧 <b>ገንዘብ ማውጣት:</b>")
+            withdrawals.sort(key=lambda x: x.get("time", ""), reverse=True)
+            for w in withdrawals[:7]:
+                icon   = wd_icons.get(w.get("status"), "⏳")
+                amt    = w.get("amount", 0)
+                method = w.get("method", "")
+                t      = w.get("time", "—")
+                if t and t != "—":
+                    try:
+                        t = datetime.fromisoformat(t).strftime("%m/%d %H:%M")
+                    except:
+                        t = t[:16]
+                lines.append(f"  {icon} {amt} ብር — {method} — {t}")
+
+        bot.send_message(c.message.chat.id, "\n".join(lines))
+
+    elif data == "referral":
+        _show_referral(c.message.chat.id, uid)
+
+    elif data == "set_cbe":
+        set_botstate(uid, "waiting_set_cbe")
+        bot.send_message(c.message.chat.id, "🏦 አዲስ CBE Account Number ላክ (13 digit):")
+
+    elif data == "set_telebirr":
+        set_botstate(uid, "waiting_set_telebirr")
+        bot.send_message(c.message.chat.id, "📱 አዲስ Telebirr ስልክ ቁጥር ላክ (10 digit):")
+
+    elif data.startswith("wdm_"):
+        method = data.replace("wdm_", "")
+        cache_set(f"tempwd_{uid}_method", method)
+        db_set(f"tempwd_{uid}_method", method)
+        set_botstate(uid, "waiting_wd_acct_num")
+        hints = {"CBE":"13 digit account number","Telebirr":"10 digit ስልክ ቁጥር",
+                 "Awash":"14 digit account number","Other":"Account number"}
+
+        saved = get_saved_accounts(uid)
+        saved_acct = saved.get(method)
+
+        kb = InlineKeyboardMarkup()
+        if saved_acct:
+            kb.add(InlineKeyboardButton(
+                f"✅ {saved_acct} ተጠቀም",
+                callback_data=f"use_saved_{method}_{saved_acct}"
+            ))
+        bot.send_message(c.message.chat.id,
+            f"📲 <b>{method}</b>\n\n"
+            + (f"💾 የቀደመ account: <code>{saved_acct}</code>\n\n" if saved_acct else "")
+            + f"🔢 {hints.get(method,'Account number')} ላክ\nወይም 👆 የቀደመውን ተጠቀም:",
+            reply_markup=kb if saved_acct else None)
+
+    elif data.startswith("use_saved_"):
+        parts  = data.split("_", 3)
+        method = parts[2]
+        account = parts[3]
+        amount = (cache_get(f"tempwd_{uid}_amount") or
+                  db_get(f"tempwd_{uid}_amount") or 0)
+        try: amount = int(float(amount))
+        except: amount = 0
+
+        balance = get_balance(uid)
+        pending = db_get(f"users/{uid}/pending_withdrawal") or 0
+        if pending > 0:
+            bot.send_message(c.message.chat.id,
+                f"⚠️ አስቀድሞ በመጠባበቅ ላይ ያለ ክፍያ አለዎት!\n💰 {pending} ብር እየተጠበቀ ነው።")
+            set_botstate(uid, None)
+            return
+        if amount > balance:
+            bot.send_message(c.message.chat.id,
+                f"❌ ቀሪ ሂሳብ አናሳ!\n💰 ቀሪ ሂሳብ: <b>{balance} ብር</b>")
+            set_botstate(uid, None)
+            return
+
+        update_balance(uid, amount, "subtract")
+        db_set(f"users/{uid}/pending_withdrawal", amount)
+        db_push("bot/withdrawals", {
+            "user_id": uid,
+            "display": c.from_user.username or c.from_user.first_name or uid,
+            "amount":  amount,
+            "method":  method,
+            "account": account,
+            "status":  "pending",
+            "time":    datetime.now().isoformat()
+        })
+        set_botstate(uid, None)
+
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("🎮 Play",
+               web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+        kb.add(
+            InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"),
+            InlineKeyboardButton("💰 ቀሪ ሂሳብ",   callback_data="balance")
+        )
+        kb.add(
+            InlineKeyboardButton("🏧 ገንዘብ አውጣ", callback_data="withdraw"),
+            InlineKeyboardButton("📊 ታሪክ",       callback_data="history")
+        )
+        bot.send_message(c.message.chat.id,
+            f"✅ <b>እየተላከ ነው!</b>\n\n"
+            f"💰 {amount} ብር\n"
+            f"📲 {method} — <code>{account}</code>\n\n"
+            f"⏳ እስከ 5 ደቂቃ ሊቆይ ይችላል...",
+            reply_markup=kb)
+
+        name = c.from_user.username or c.from_user.first_name
+        if method == "Telebirr":
+            bot.send_message(ADMIN_ID, f"🤖AUTO|{account}|{amount}|{uid}", parse_mode=None)
+        else:
+            bot.send_message(ADMIN_ID,
+                f"🏧 <b>ገንዘብ ማውጣት ጥያቄ</b>\n"
+                f"👤 {name} (<code>{uid}</code>)\n"
+                f"💰 {amount} ብር\n"
+                f"📲 {method} — <code>{account}</code>\n\n"
+                f"⚠️ Admin Panel ላይ ያስተናግዱ")
+
+    # ══════════════════════════════════════════
+    # FIX 3: Admin approve — ref save + buttons remove + pid cancel
+    # ══════════════════════════════════════════
+    elif data.startswith("ap_"):
+        parts = data.split("_")
+        pid   = parts[1]; u_id = parts[2]
+
+        pay_record = db_get(f"payments/{pid}") or {}
+        sms_amount = int(float(pay_record.get("sms_amount", 0) or 0))
+        req_amount = int(float(pay_record.get("requested_amount", 0) or
+                               pay_record.get("amount", 0) or 0))
+        ref = pay_record.get("ref", "")
+
+        if sms_amount <= 0:
+            bot.answer_callback_query(c.id,
+                "⚠️ SMS amount ገና አልደረሰም! Amount ለማስቀመጥ /givebalance ይጠቀሙ",
+                show_alert=True)
+            bot.send_message(ADMIN_ID,
+                f"⚠️ <b>Manual Approve ያስፈልጋል</b>\n\n"
+                f"👤 <code>{u_id}</code>\n"
+                f"📋 PID: <code>{pid}</code>\n"
+                f"📝 User ጠየቀ: <b>{req_amount} ብር</b>\n\n"
+                f"SMS amount አልደረሰም። ትክክለኛ amount ያረጋግጡ ከዚያ:\n"
+                f"<code>/givebalance {u_id} [amount]</code>")
+            # ── Ref save — ድጋሚ screenshot ሸወዳ ይቆማል ──
+            if ref:
+                save_ref(ref, u_id, 0)
+            # ── Buttons አጥፋ ──
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=None)
+            except: pass
+            return
+
+        # ── Ref save — ድጋሚ screenshot ሸወዳ ይቆማል ──
+        if ref:
+            save_ref(ref, u_id, sms_amount)
+
+        new_bal = update_balance(u_id, sms_amount, "add")
+        db_set(f"payments/{pid}/status",  "approved")
+        db_set(f"payments/{pid}/verified", True)
+        set_temp(u_id, None)
+
+        # ── Pid → _cancelled_pids ይጨምር — timeout false message ይቆማል ──
+        with _cancelled_lock:
+            _cancelled_pids.add(pid)
+
+        # ── Buttons አጥፋ (reply_markup=None) ──
+        try:
+            bot.edit_message_caption(
+                chat_id=c.message.chat.id,
+                message_id=c.message.message_id,
+                caption=(c.message.caption or "") + f"\n\n✅ <b>ጸድቋል — {sms_amount} ብር</b>",
+                reply_markup=None)
+        except:
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=None)
+            except: pass
+
+        try:
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("🎮 Play",
+                   web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={u_id}")))
+            kb.add(
+                InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"),
+                InlineKeyboardButton("💰 ቀሪ ሂሳብ",   callback_data="balance")
+            )
+            kb.add(
+                InlineKeyboardButton("🏧 ገንዘብ አውጣ", callback_data="withdraw"),
+                InlineKeyboardButton("📊 ታሪክ",       callback_data="history")
+            )
+            bot.send_message(int(u_id),
+                f"✅ <b>ገንዘብ ገብቷል!</b>\n\n"
+                f"💰 {sms_amount} ብር ታከለ!\n"
+                f"💼 ቀሪ ሂሳብ: <b>{new_bal} ብር</b>",
+                reply_markup=kb)
+        except: pass
+
+    elif data.startswith("re_"):
+        parts = data.split("_")
+        pid = parts[1]; u_id = parts[2]
+        db_set(f"payments/{pid}/status", "rejected")
+
+        # ── Pid → _cancelled_pids ይጨምር ──
+        with _cancelled_lock:
+            _cancelled_pids.add(pid)
+
+        update_temp(u_id, "retry_count", 0)
+
+        # ── Buttons አጥፋ ──
+        try:
+            bot.edit_message_caption(
+                chat_id=c.message.chat.id,
+                message_id=c.message.message_id,
+                caption=(c.message.caption or "") + "\n\n❌ <b>ውድቅ ሆኗል</b>",
+                reply_markup=None)
+        except:
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=None)
+            except: pass
+
+        try:
+            bot.send_message(int(u_id),
+                "📸 Screenshot ጥራት የለውም\n\nግልጽ የሆነ screenshot ድጋሚ ላክ 👇")
+        except: pass
+
+# ══════════════════════════════════════════
+# NOTIFICATION LISTENER
+# ══════════════════════════════════════════
+def notification_listener():
+    while True:
+        try:
+            r = requests.get(f"{SERVER}/unread-notifications", timeout=5)
+            notifs = r.json()
+            for n in notifs:
+                if not str(n["uid"]).isdigit(): continue
+                if len(str(n["uid"])) < 5: continue
+                try:
+                    uid = str(n["uid"])
+                    msg = n["message"]
+                    if any(kw in msg for kw in ["withdrawal","ብር withdrawal","ተፈቀደ","rejected","ተመለሰ"]):
+                        db_set(f"users/{uid}/pending_withdrawal", 0)
+                    try:
+                        bot.send_message(int(uid), msg)
+                    except:
+                        pass
+                    requests.post(f"{SERVER}/mark-notification-read",
+                        json={"id": n["id"]}, timeout=5)
+                except Exception as e:
+                    print(f"Notify error {n['uid']}: {e}")
+        except Exception as e:
+            print(f"Listener error: {e}")
+        time.sleep(5)
+
+threading.Thread(target=notification_listener, daemon=True).start()
+
+# ══════════════════════════════════════════
+# TIMEOUT CHECKER
+# ══════════════════════════════════════════
+MATCH_TIMEOUT      = 20 * 60  # 20 ደቂቃ
+PHOTO_POOL_TIMEOUT = 20 * 60  # 20 ደቂቃ
+
+_cancelled_pids = set()
+_cancelled_lock = threading.Lock()
+
+def timeout_checker():
+    while True:
+        try:
+            now_ts = datetime.now().timestamp()
+
+            # ── 1. Photo pool timeout ──
+            photo_pool = db_get("bot/photo_pool") or {}
+            seen_pids  = set()
+            for ref_key, entry in list(photo_pool.items()):
+                if not isinstance(entry, dict): continue
+                if now_ts - entry.get("saved_at", 0) < PHOTO_POOL_TIMEOUT: continue
+                pid = entry.get("pid")
+                uid = str(entry.get("uid", ""))
+                if not pid or not uid: continue
+
+                # ── approved/cancelled/rejected → pid ን set ላይ ጨምር ──
+                pay_status = (db_get(f"payments/{pid}") or {}).get("status", "")
+                if pay_status in ("approved", "cancelled", "rejected"):
+                    with _cancelled_lock:
+                        _cancelled_pids.add(pid)
+                    for r in (entry.get("all_refs") or [ref_key]):
+                        db_delete(f"bot/photo_pool/{r.upper()}")
+                    continue
+
+                with _cancelled_lock:
+                    if pid in _cancelled_pids: continue
+                    if pid in seen_pids: continue
+                    seen_pids.add(pid)
+                    _cancelled_pids.add(pid)
+
+                for r in (entry.get("all_refs") or [ref_key]):
+                    db_delete(f"bot/photo_pool/{r.upper()}")
+                db_set(f"payments/{pid}/status", "cancelled")
+                set_temp(uid, None)
+                try:
+                    bot.send_message(int(uid),
+                        f"⏰ <b>ገንዘብ ማስገቢያ ተሰርዟል!</b>\n\n"
+                        f"⚠️ SMS 20 ደቂቃ ውስጥ አልደረሰም\n\nእንደገና ሞክር 👇")
+                    send_menu(int(uid))
+                except: pass
+                bot.send_message(ADMIN_ID,
+                    f"⏰ <b>Photo Pool Timeout</b>\n"
+                    f"👤 <code>{uid}</code> | REF: <code>{ref_key}</code>")
+
+            # ── 2. Payment timeout ──
+            payments = db_get("payments") or {}
+            for pid, pay in list(payments.items()):
+                if not isinstance(pay, dict): continue
+                if pay.get("status") != "pending": continue
+                if now_ts - pay.get("time", 0) / 1000 < MATCH_TIMEOUT: continue
+
+                with _cancelled_lock:
+                    if pid in _cancelled_pids: continue
+                    _cancelled_pids.add(pid)
+
+                uid     = str(pay.get("user_id"))
+                ref     = pay.get("ref", "")
+                display = pay.get("display") or uid
+                db_set(f"payments/{pid}/status", "cancelled")
+                set_temp(uid, None)
+                if ref:
+                    db_delete(f"bot/sms_pool/{ref.upper()}")
+                    db_delete(f"bot/photo_pool/{ref.upper()}")
+                try:
+                    bot.send_message(int(uid),
+                        f"⏰ <b>ገንዘብ ማስገቢያ ተሰርዟል!</b>\n\n"
+                        f"⚠️ SMS 20 ደቂቃ ውስጥ አልደረሰም\n\nእንደገና ሞክር 👇")
+                    send_menu(int(uid))
+                except: pass
+                bot.send_message(ADMIN_ID,
+                    f"⏰ <b>Timeout — ተሰርዟል</b>\n"
+                    f"👤 {display} (<code>{uid}</code>) | REF: <code>{ref}</code>")
+
+        except Exception as e:
+            print(f"Timeout checker error: {e}")
+        time.sleep(60)
+
+threading.Thread(target=timeout_checker, daemon=True).start()
+
+# ══════════════════════════════════════════
+# DAILY REMINDER
+# ══════════════════════════════════════════
+def daily_reminder_loop():
+    while True:
+        try:
+            now_ts = datetime.now().timestamp()
+            users  = db_get("users") or {}
+            for uid, user in users.items():
+                if not isinstance(user, dict): continue
+                if not uid.isdigit(): continue
+                last_act = user.get("last_activity")
+                if not last_act: continue
+                if (now_ts - float(last_act)) / 3600 < REMINDER_HOURS: continue
+                last_reminder = user.get("last_reminder_sent")
+                if last_reminder and (now_ts - float(last_reminder)) / 3600 < REMINDER_HOURS: continue
+                bal = get_balance(uid)
+                try:
+                    msg = (
+                        f"🎮 <b>Bingo Pro ይናፍቅሃል!</b>\n\n"
+                        f"💰 ቀሪ ሂሳብ: <b>{bal} ብር</b>\n\n▶️ አሁን ተጫወት!"
+                        if bal > 0 else
+                        f"🎮 <b>Bingo Pro ይናፍቅሃል!</b>\n\n"
+                        f"💳 ገንዘብ አስገባ እና ተጫወት!\n▶️ ጠቅ አድርግ 👇"
+                    )
+                    kb = InlineKeyboardMarkup()
+                    kb.add(InlineKeyboardButton("🎮 Play",
+                           web_app=WebAppInfo(f"{WEBAPP_URL}/?uid={uid}")))
+                    if bal <= 0:
+                        kb.add(InlineKeyboardButton("💳 ገንዘብ አስገባ", callback_data="deposit"))
+                    bot.send_message(int(uid), msg, reply_markup=kb)
+                    db_set(f"users/{uid}/last_reminder_sent", now_ts)
+                except Exception as e:
+                    print(f"Reminder error {uid}: {e}")
+        except Exception as e:
+            print(f"daily_reminder_loop error: {e}")
+        time.sleep(3600)
+
+threading.Thread(target=daily_reminder_loop, daemon=True).start()
+
+# ══════════════════════════════════════════
+# DAILY REPORT
+# ══════════════════════════════════════════
+def daily_report_loop():
+    while True:
+        now      = datetime.now()
+        next_run = now.replace(hour=DAILY_REPORT_HOUR, minute=DAILY_REPORT_MINUTE,
+                               second=0, microsecond=0)
+        if next_run <= now: next_run += timedelta(days=1)
+        time.sleep((next_run - now).total_seconds())
+        try:
+            h  = requests.get(f"{SERVER}/health", timeout=5).json()
+            gs = requests.get(f"{SERVER}/game-state", timeout=5).json()
+            collected     = float(gs.get('analytics/totalCollected', 0) or 0)
+            paid_out      = float(gs.get('analytics/totalPaidOut', 0) or 0)
+            profit        = float(gs.get('analytics/houseProfit', 0) or 0)
+            total_dep     = gs.get('analytics/totalDeposits', 0) or 0
+            total_wd      = gs.get('analytics/totalWithdrawals', 0) or 0
+
+            # ── Total user balance ──
+            try:
+                bal_r = requests.get(f"{SERVER}/all-balances", timeout=5)
+                balances = bal_r.json()
+                total_user_bal = sum(int(float(v.get('balance', 0) or 0)) for v in balances.values())
+            except:
+                total_user_bal = 0
+
+            bot.send_message(ADMIN_ID,
+                f"📊 <b>Daily Report — {datetime.now().strftime('%Y-%m-%d')}</b>\n\n"
+                f"👥 Users: {h.get('users', 0)}\n"
+                f"🏆 Winners: {h.get('winners', 0)}\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"💳 Total Deposits: {int(float(total_dep))} ብር\n"
+                f"🏧 Total Withdrawals: {int(float(total_wd))} ብር\n"
+                f"💼 Users Total Balance: {total_user_bal} ብር\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"💰 Game Collected: {int(collected)} ብር\n"
+                f"💸 Game Paid Out: {int(paid_out)} ብር\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"📈 Profit: {int(profit)} ብር")
+        except Exception as e:
+            print(f"Daily report error: {e}")
+
+threading.Thread(target=daily_report_loop, daemon=True).start()
+
+# ══════════════════════════════════════════
+# 2-DAY CLEANUP LOOP
+# ══════════════════════════════════════════
+CLEANUP_AGE = 2 * 24 * 60 * 60  # 2 ቀን
+
+def cleanup_loop():
+    while True:
+        try:
+            now_ts = datetime.now().timestamp()
+
+            payments = db_get("payments") or {}
+            for pid, pay in list(payments.items()):
+                if not isinstance(pay, dict): continue
+                age = now_ts - pay.get("time", 0) / 1000
+                if pay.get("status") == "pending":
+                    if age > 3600:
+                        db_delete(f"payments/{pid}")
+                elif age > CLEANUP_AGE:
+                    db_delete(f"payments/{pid}")
+
+            withdrawals = db_get("bot/withdrawals") or {}
+            for wid, w in list(withdrawals.items()):
+                if not isinstance(w, dict): continue
+                if w.get("status") == "pending": continue
+                try:
+                    t = w.get("time", "")
+                    if not t: continue
+                    ts = datetime.fromisoformat(t).timestamp()
+                    if now_ts - ts > CLEANUP_AGE:
+                        db_delete(f"bot/withdrawals/{wid}")
+                except: continue
+
+            sms_pool = db_get("bot/sms_pool") or {}
+            for ref_key, entry in list(sms_pool.items()):
+                if not isinstance(entry, dict): continue
+                saved_at = entry.get("saved_at", 0)
+                if now_ts - saved_at > CLEANUP_AGE:
+                    db_delete(f"bot/sms_pool/{ref_key}")
+
+            photo_pool = db_get("bot/photo_pool") or {}
+            for ref_key, entry in list(photo_pool.items()):
+                if not isinstance(entry, dict): continue
+                saved_at = entry.get("saved_at", 0)
+                if now_ts - saved_at > CLEANUP_AGE:
+                    db_delete(f"bot/photo_pool/{ref_key}")
+
+            print(f"✅ Cleanup done — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+
+        time.sleep(24 * 60 * 60)
+
+threading.Thread(target=cleanup_loop, daemon=True).start()
+
+# ══════════════════════════════════════════
+# START POLLING
+# ══════════════════════════════════════════
+print("🚀 Bingo Bot starting...")
+time.sleep(5)
+
+while True:
+    try:
+        bot.delete_webhook(drop_pending_updates=True)
+        time.sleep(3)
+        print("✅ Bot polling started!")
+        bot.infinity_polling(
+            skip_pending=True,
+            timeout=30,
+            long_polling_timeout=30,
+            allowed_updates=["message", "callback_query"],
+            restart_on_change=False,
+            logger_level=None
+        )
+    except Exception as e:
+        err = str(e)
+        print(f"Bot crashed: {err}")
+        if "Conflict" in err:
+            try: bot.delete_webhook(drop_pending_updates=True)
+            except: pass
+            time.sleep(20)
+        else:
+            time.sleep(5)
