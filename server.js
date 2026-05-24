@@ -309,8 +309,8 @@ app.get('/game-state', async (req, res) => {
     flat['analytics/totalDeposits']    = analyticsData['totalDeposits']    || 0;
     flat['analytics/totalWithdrawals'] = analyticsData['totalWithdrawals'] || 0;
     flat['analytics/houseProfit'] = analyticsData['houseProfit'] || 0;
-flat['analytics/botBet']      = analyticsData['botBet']      || 0;
-flat['analytics/botWin']      = analyticsData['botWin']      || 0;
+    flat['analytics/botBet']      = analyticsData['botBet']      || 0;
+    flat['analytics/botWin']      = analyticsData['botWin']      || 0;
 
     const history = (await getState('analytics/history')) || [];
     flat['analytics/history'] = history;
@@ -347,11 +347,9 @@ app.post('/delete-promotion', async (req, res) => {
   try {
     const { id } = req.body;
 
-    // photo_url ያምጣል ከ Cloudinary ለ delete
     const r = await pool.query('SELECT photo_url FROM promotions WHERE id=$1', [id]);
     const photoUrl = r.rows[0]?.photo_url || '';
 
-    // Cloudinary ላይ ይሰርዛል
     if (photoUrl) {
       try {
         const match = photoUrl.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
@@ -379,7 +377,6 @@ app.post('/delete-promotion', async (req, res) => {
       } catch(e) { console.error('❌ Cloudinary delete error:', e.message); }
     }
 
-    // DB ላይ ይሰርዛል
     await pool.query('DELETE FROM promotions WHERE id=$1', [id]);
     res.json({ ok: true });
   } catch(e) { res.json({ ok: false, msg: e.message }); }
@@ -417,7 +414,6 @@ app.post('/save-promo-photo', multer({ storage: multer.memoryStorage() }).single
       req2.write(body); req2.end();
     });
 
-    // DB ውስጥ temp promo ያስቀምጣል (active=false, interval=0)
     const result = await pool.query(
       'INSERT INTO promotions(text,photo_url,target_type,interval_ms,active,created_at) VALUES($1,$2,$3,$4,false,$5) RETURNING id',
       ['__send_now__', photoUrl, 'bot', 0, Date.now()]
@@ -431,7 +427,6 @@ app.post('/delete-promo-photo', async (req, res) => {
   try {
     const { promoId, photoUrl } = req.body;
 
-    // Cloudinary ላይ ይሰርዛል
     if (photoUrl) {
       try {
         const match = photoUrl.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
@@ -459,7 +454,6 @@ app.post('/delete-promo-photo', async (req, res) => {
       } catch(e) { console.error('❌ Cloudinary delete error:', e.message); }
     }
 
-    // DB ላይ ይሰርዛል
     if (promoId) await pool.query('DELETE FROM promotions WHERE id=$1', [promoId]);
     res.json({ ok: true });
   } catch(e) { res.json({ ok: false, msg: e.message }); }
@@ -503,9 +497,9 @@ app.post('/withdrawal-action', async (req, res) => {
     if (action === 'approve') {
       await updateAnalytics('totalWithdrawals', amount);
       const agentsData2 = JSON.parse(
-  (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
-);
-const agentCode = agentsData2[allWd[key]?.acceptedBy]?.code || allWd[key]?.acceptedBy || '—';
+        (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
+      );
+      const agentCode = agentsData2[allWd[key]?.acceptedBy]?.code || allWd[key]?.acceptedBy || '—';
       await pool.query(
         "UPDATE game_state SET value='0' WHERE key=$1",
         [`users/${uid}/pending_withdrawal`]
@@ -537,7 +531,6 @@ app.post('/add-agent', async (req, res) => {
     const agents = JSON.parse(
       (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
     );
-    // Auto code generate — AGT-001, AGT-002...
     const existingCodes = Object.values(agents)
       .map(a => a.code)
       .filter(Boolean)
@@ -713,10 +706,8 @@ app.post('/create-interval-promotion', multer({ storage: multer.memoryStorage() 
   const photoBuffer = req.file ? req.file.buffer : null;
   if (!text && !photoBuffer) return res.json({ ok: false, msg: '❌ Message ወይም Photo ያስፈልጋል!' });
 
-  // ወዲያውኑ response ይላካል
   res.json({ ok: true, msg: '✅ Interval promotion ተጀምሯል!' });
 
-  // Background ላይ Cloudinary upload + DB save ያደርጋል
   try {
     let photoUrl = '';
     if (photoBuffer) {
@@ -754,21 +745,20 @@ app.post('/create-interval-promotion', multer({ storage: multer.memoryStorage() 
     console.log('✅ Interval promo created!');
   } catch(e) { console.error('❌ create-interval-promotion error:', e.message); }
 });
+
 app.post('/send-promotion', multer({ storage: multer.memoryStorage() }).single('photo'), async (req, res) => {
   const { text, targetType, groupId, photoUrl } = req.body;
   const photoBuffer = req.file ? req.file.buffer : null;
   if (!text && !photoBuffer && !photoUrl)
     return res.json({ ok: false, msg: '❌ Message ወይም Photo ያስፈልጋል!' });
 
-  // ወዲያውኑ response — timeout አይሆንም
   res.json({ ok: true, msg: '✅ Promotion እየተላከ ነው...' });
 
-  // Background ላይ ይሰራል
   broadcastPromotion({ text, photoBuffer, photoUrl, targetType, groupId })
     .catch(e => console.error('❌ broadcastPromotion:', e.message));
 });
 
-// ══ PROMOTION BROADCAST — ቀጥታ Telegram API ══
+// ══ PROMOTION BROADCAST ══
 async function broadcastPromotion(promoData) {
   try {
     const { text, photoBuffer, photoUrl, targetType, groupId } = promoData;
@@ -779,51 +769,49 @@ async function broadcastPromotion(promoData) {
       return;
     }
 
-    // ── Group ሲሆን ──
     if (targetType === 'group' && groupId) {
-  let apiPath, bodyData;
-  if (photoUrl) {
-    apiPath = `/bot${BOT_TOKEN}/sendPhoto`;
-    bodyData = JSON.stringify({
-      chat_id: groupId,
-      photo: photoUrl,
-      caption: text || '',
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
-        ]]
+      let apiPath, bodyData;
+      if (photoUrl) {
+        apiPath = `/bot${BOT_TOKEN}/sendPhoto`;
+        bodyData = JSON.stringify({
+          chat_id: groupId,
+          photo: photoUrl,
+          caption: text || '',
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
+            ]]
+          }
+        });
+      } else {
+        apiPath = `/bot${BOT_TOKEN}/sendMessage`;
+        bodyData = JSON.stringify({
+          chat_id: groupId,
+          text: text || '',
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
+            ]]
+          }
+        });
       }
-    });
-  } else {
-    apiPath = `/bot${BOT_TOKEN}/sendMessage`;
-    bodyData = JSON.stringify({
-      chat_id: groupId,
-      text: text || '',
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
-        ]]
-      }
-    });
-  }
-  await new Promise((resolve) => {
-    const opts = {
-      hostname: 'api.telegram.org',
-      path: apiPath,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) }
-    };
-    const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
-    r2.on('error', resolve);
-    r2.write(bodyData); r2.end();
-  });
-  console.log('✅ Group promotion sent!');
-  return;
-}
+      await new Promise((resolve) => {
+        const opts = {
+          hostname: 'api.telegram.org',
+          path: apiPath,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) }
+        };
+        const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
+        r2.on('error', resolve);
+        r2.write(bodyData); r2.end();
+      });
+      console.log('✅ Group promotion sent!');
+      return;
+    }
 
-    // ── Bot Users ሁሉ ──
     const usersRes = await pool.query('SELECT uid FROM users WHERE is_bot = false');
     const uids = usersRes.rows.map(r => r.uid);
     console.log(`📢 Sending promotion to ${uids.length} users...`);
@@ -831,22 +819,21 @@ async function broadcastPromotion(promoData) {
     for (const uid of uids) {
       try {
         if (photoBuffer) {
-  // Photo buffer ጋር
-  const replyMarkup = JSON.stringify({
-    inline_keyboard: [[
-      { text: '🎮 Play Now', web_app: { url: 'https://benja0952346729-hash.github.io/Game/'  } }
-    ]]
-  });
-  const boundary = '----FormBoundary' + Date.now();
-  const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${uid}\r\n`),
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${text || ''}\r\n`),
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n`),
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="reply_markup"\r\n\r\n${replyMarkup}\r\n`),
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="promo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
-    photoBuffer,
-    Buffer.from(`\r\n--${boundary}--\r\n`)
-  ]);
+          const replyMarkup = JSON.stringify({
+            inline_keyboard: [[
+              { text: '🎮 Play Now', web_app: { url: 'https://benja0952346729-hash.github.io/Game/' } }
+            ]]
+          });
+          const boundary = '----FormBoundary' + Date.now();
+          const body = Buffer.concat([
+            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${uid}\r\n`),
+            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${text || ''}\r\n`),
+            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n`),
+            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="reply_markup"\r\n\r\n${replyMarkup}\r\n`),
+            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="promo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
+            photoBuffer,
+            Buffer.from(`\r\n--${boundary}--\r\n`)
+          ]);
           await new Promise((resolve) => {
             const opts = {
               hostname: 'api.telegram.org',
@@ -862,21 +849,17 @@ async function broadcastPromotion(promoData) {
             r2.write(body); r2.end();
           });
         } else if (photoUrl) {
-  // Cloudinary photo URL ጋር
-  const bodyData = JSON.stringify({
-    chat_id: uid,
-    photo: photoUrl,
-    caption: text || '',
-    parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [[
-        {
-          text: '🎮 Play Now',
-          web_app: { url: 'https://game-production-7f86.up.railway.app/' }
-        }
-      ]]
-    }
-  });
+          const bodyData = JSON.stringify({
+            chat_id: uid,
+            photo: photoUrl,
+            caption: text || '',
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🎮 Play Now', web_app: { url: 'https://game-production-7f86.up.railway.app/' } }
+              ]]
+            }
+          });
           await new Promise((resolve) => {
             const opts = {
               hostname: 'api.telegram.org',
@@ -892,20 +875,16 @@ async function broadcastPromotion(promoData) {
             r2.write(bodyData); r2.end();
           });
         } else {
-  // Text ብቻ
-  const bodyData = JSON.stringify({
-    chat_id: uid,
-    text: text || '',
-    parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [[
-        {
-          text: '🎮 Play Now',
-          web_app: { url: 'https://game-production-7f86.up.railway.app/' }
-        }
-      ]]
-    }
-  });
+          const bodyData = JSON.stringify({
+            chat_id: uid,
+            text: text || '',
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🎮 Play Now', web_app: { url: 'https://game-production-7f86.up.railway.app/' } }
+              ]]
+            }
+          });
           await new Promise((resolve) => {
             const opts = {
               hostname: 'api.telegram.org',
@@ -921,7 +900,6 @@ async function broadcastPromotion(promoData) {
             r2.write(bodyData); r2.end();
           });
         }
-        // Rate limit ለማስቀረት 50ms delay
         await new Promise(r => setTimeout(r, 50));
       } catch(e) {
         console.error(`❌ Promo to ${uid}:`, e.message);
@@ -1033,6 +1011,7 @@ function hashSeed(n) {
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
   return (h ^ (h >>> 16)) >>> 0;
 }
+
 function generateBoard(seed) {
   let s = seed;
   function rand() {
@@ -1054,6 +1033,7 @@ function generateBoard(seed) {
   b[12] = 'FREE';
   return b;
 }
+
 function checkWin(board, called) {
   const calledNums = called.map(Number);
   const g = [];
@@ -1067,27 +1047,37 @@ function checkWin(board, called) {
   return false;
 }
 
-function wouldCloseColumnSoon(n, allBoards, called) {
-  const colIndices = [
-    [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22],
-    [3,8,13,18,23], [4,9,14,19,24],
-  ];
-  const simulatedCalled = [...called, n];
-  for (let cardId in allBoards) {
-    const board = allBoards[cardId];
-    for (let col of colIndices) {
-      const cells = col.map(i => board[i]);
-      const matched = cells.filter(c => c === 'FREE' || simulatedCalled.includes(c)).length;
-      if (matched === 4) return true;
-    }
-  }
-  return false;
-}
-
 function clearAllTimers() {
   clearInterval(callTimer); callTimer = null;
   clearInterval(countdownTimer); countdownTimer = null;
   clearInterval(announceTimer); announceTimer = null;
+}
+
+// ══ WIN LINE PATTERNS ══
+const ALL_WIN_LINES = [
+  [0,1,2,3,4],      // row 1
+  [5,6,7,8,9],      // row 2
+  [10,11,12,13,14], // row 3
+  [15,16,17,18,19], // row 4
+  [20,21,22,23,24], // row 5
+  [0,5,10,15,20],   // col 1 (B)
+  [1,6,11,16,21],   // col 2 (I)
+  [2,7,12,17,22],   // col 3 (N)
+  [3,8,13,18,23],   // col 4 (G)
+  [4,9,14,19,24],   // col 5 (O)
+  [0,6,12,18,24],   // diagonal ↘
+  [4,8,12,16,20],   // diagonal ↙
+];
+
+// Target card ላይ random winning line ይምረጥ — FREE ሳይቆጠር
+function getWinningLine(board) {
+  const shuffled = [...ALL_WIN_LINES].sort(() => Math.random() - 0.5);
+  for (const line of shuffled) {
+    const nums = line.map(i => board[i]).filter(n => n !== 'FREE');
+    if (nums.length > 0) return nums;
+  }
+  // fallback
+  return ALL_WIN_LINES[0].map(i => board[i]).filter(n => n !== 'FREE');
 }
 
 setInterval(async () => {
@@ -1182,7 +1172,7 @@ async function addBotsIfNeeded() {
     await setState('game/prize', newPrize);
     await setState('game/total', newTotal);
     await updateAnalytics('botBet', bet * botsNeeded);
-    
+
     console.log(`🤖 Added ${botsNeeded} bots. Total cards: ${total}, prize: ${newPrize}`);
   } catch(e) { console.error('❌ addBotsIfNeeded error:', e.message); }
 }
@@ -1246,9 +1236,16 @@ async function autoCallNumber(speed) {
   }
 
   const targetBoard = generateBoard(hashSeed(Number(targetCard.cardId)));
-const neededNums = targetBoard.filter(n => n !== 'FREE');
-const allBoards = {};
-for (let cardId in cardInfoMap) allBoards[cardId] = generateBoard(hashSeed(Number(cardId)));
+  const allBoards = {};
+  for (let cardId in cardInfoMap) allBoards[cardId] = generateBoard(hashSeed(Number(cardId)));
+
+  // ══ FIX: neededNums = አንድ random winning line ብቻ ══
+  const neededNums = getWinningLine(targetBoard);
+  console.log(`🎯 Target: ${targetCard.cardId} (${targetCard.isBot ? 'BOT' : 'REAL'}) | Line: [${neededNums.join(',')}]`);
+
+  // ══ Game start ላይ አንድ ጊዜ ብቻ ያነባል — DB load ይቀንሳል ══
+  const noBotBias = (await getState('autoMode/noBotBias')) ?? 0.50;
+  console.log(`⚙️ noBotBias: ${noBotBias}`);
 
   callTimer = setInterval(async () => {
     try {
@@ -1282,14 +1279,16 @@ for (let cardId in cardInfoMap) allBoards[cardId] = generateBoard(hashSeed(Numbe
         return;
       }
 
-      const neededRemaining = remaining.filter(n => neededNums.includes(n) && !calledNumbers.includes(n));
+      // ══ FIX: neededRemaining = target winning line ውስጥ ያልወጡ ቁጥሮች ══
+      const neededRemaining = neededNums.filter(n => !calledNumbers.includes(n));
 
-      const noBotBias = (await getState('autoMode/noBotBias')) ?? 0.50;
       const rand = Math.random();
       let n;
-      if (neededRemaining.length <= 3 && neededRemaining.length > 0 && rand < noBotBias)
+      if (neededRemaining.length <= 3 && neededRemaining.length > 0 && rand < noBotBias) {
+        // Target line ን ለማጠናቀቅ needed number ይምረጥ
         n = neededRemaining[Math.floor(Math.random() * neededRemaining.length)];
-      else if (neededRemaining.length > 3) {
+      } else if (neededRemaining.length > 3) {
+        // Target line ገና ብዙ ቁጥሮች ስላሉ — non-needed ይምረጥ
         const nonNeeded = remaining.filter(x => !neededNums.includes(x));
         n = nonNeeded.length > 0
           ? nonNeeded[Math.floor(Math.random() * nonNeeded.length)]
@@ -1297,11 +1296,12 @@ for (let cardId in cardInfoMap) allBoards[cardId] = generateBoard(hashSeed(Numbe
       } else {
         n = remaining[Math.floor(Math.random() * remaining.length)];
       }
+
       calledNumbers.push(n);
       const called = (await getState('game/calledNumbers')) || [];
       called.push(n);
       await setState('game/calledNumbers', called);
-      console.log(`📢 ${getLetter(n)}${n}`);
+      console.log(`📢 ${getLetter(n)}${n} | needed: [${neededRemaining.join(',')}]`);
 
       const winners = [];
       for (let cardId in allBoards)
@@ -1394,86 +1394,88 @@ async function announceWinner(realBetsTotal, botBetsTotal) {
     });
 
     await setState('game/announcement', { type: 'winner', winners, prize, share, time: Date.now(), calledNumbers });
-// ══ TELEGRAM GROUP WINNER ANNOUNCE ══
-try {
-  const BOT_TOKEN = process.env.BOT_TOKEN || '';
-  const GROUP_ID = '-1003570659417';
 
-  if (BOT_TOKEN && GROUP_ID) {
-    const intervalMins = (await getState('settings/groupAnnounceInterval')) || 0;
-    
-    if (intervalMins > 0) {
-      const intervalMs = intervalMins * 60 * 1000;
-      const lastSent = (await getState('settings/lastGroupAnnounce')) || 0;
-      
-      if (Date.now() - lastSent >= intervalMs) {
-        await setState('settings/lastGroupAnnounce', Date.now());
-        
-        const winnerLines = winners.map(w =>
-          `🏆 <b>${w.displayName}</b>`
-        ).join('\n');
+    // ══ TELEGRAM GROUP WINNER ANNOUNCE ══
+    try {
+      const BOT_TOKEN = process.env.BOT_TOKEN || '';
+      const GROUP_ID = '-1003570659417';
 
-        const msg = [
-          `🎉 <b>Round ${roundNumber} — አሸናፊ ተገኘ!</b>`,
-          ``,
-          winnerLines,
-          ``,
-          `💰 Prize: <b>${share} ብር</b>`,
-          `🔢 Numbers Called: <b>${calledNumbers.length}</b>`,
-          `🕐 ${new Date().toLocaleTimeString('am-ET')}`,
-          ``,
-          `🎮 ጨዋታ ለመቀጠል Bot ይጠቀሙ!`
-        ].join('\n');
+      if (BOT_TOKEN && GROUP_ID) {
+        const intervalMins = (await getState('settings/groupAnnounceInterval')) || 0;
 
-        const bodyData = JSON.stringify({
-          chat_id: GROUP_ID,
-          text: msg,
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
-            ]]
-          }
-        });
+        if (intervalMins > 0) {
+          const intervalMs = intervalMins * 60 * 1000;
+          const lastSent = (await getState('settings/lastGroupAnnounce')) || 0;
 
-        await new Promise((resolve) => {
-          const opts = {
-            hostname: 'api.telegram.org',
-            path: `/bot${BOT_TOKEN}/sendMessage`,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(bodyData)
-            }
-          };
-          const r2 = https.request(opts, (r) => {
-            let d = '';
-            r.on('data', c => d += c);
-            r.on('end', () => {
-              console.log('📢 Group announce sent:', d.slice(0, 120));
-              resolve();
+          if (Date.now() - lastSent >= intervalMs) {
+            await setState('settings/lastGroupAnnounce', Date.now());
+
+            const winnerLines = winners.map(w =>
+              `🏆 <b>${w.displayName}</b>`
+            ).join('\n');
+
+            const msg = [
+              `🎉 <b>Round ${roundNumber} — አሸናፊ ተገኘ!</b>`,
+              ``,
+              winnerLines,
+              ``,
+              `💰 Prize: <b>${share} ብር</b>`,
+              `🔢 Numbers Called: <b>${calledNumbers.length}</b>`,
+              `🕐 ${new Date().toLocaleTimeString('am-ET')}`,
+              ``,
+              `🎮 ጨዋታ ለመቀጠል Bot ይጠቀሙ!`
+            ].join('\n');
+
+            const bodyData = JSON.stringify({
+              chat_id: GROUP_ID,
+              text: msg,
+              parse_mode: 'HTML',
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '🎮 Play Now', url: 'https://t.me/Firstanywharebingobot' }
+                ]]
+              }
             });
-          });
-          r2.on('error', (e) => {
-            console.error('❌ Group announce error:', e.message);
-            resolve();
-          });
-          r2.write(bodyData);
-          r2.end();
-        });
 
-        console.log('✅ Winner announced to Telegram group!');
-      } else {
-        console.log('⏭ Group announce skipped — interval not reached');
+            await new Promise((resolve) => {
+              const opts = {
+                hostname: 'api.telegram.org',
+                path: `/bot${BOT_TOKEN}/sendMessage`,
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(bodyData)
+                }
+              };
+              const r2 = https.request(opts, (r) => {
+                let d = '';
+                r.on('data', c => d += c);
+                r.on('end', () => {
+                  console.log('📢 Group announce sent:', d.slice(0, 120));
+                  resolve();
+                });
+              });
+              r2.on('error', (e) => {
+                console.error('❌ Group announce error:', e.message);
+                resolve();
+              });
+              r2.write(bodyData);
+              r2.end();
+            });
+
+            console.log('✅ Winner announced to Telegram group!');
+          } else {
+            console.log('⏭ Group announce skipped — interval not reached');
+          }
+        } else {
+          console.log('⏭ Group announce off — interval is 0');
+        }
       }
-    } else {
-      console.log('⏭ Group announce off — interval is 0');
+    } catch(e) {
+      console.error('❌ Telegram group announce error:', e.message);
     }
-  }
-} catch(e) {
-  console.error('❌ Telegram group announce error:', e.message);
-}
-// ══ END TELEGRAM GROUP ANNOUNCE ══
+    // ══ END TELEGRAM GROUP ANNOUNCE ══
+
     await setState('game/paid', true);
     await setState('game/pendingWinner', { ...data, announced: true });
 
@@ -1482,32 +1484,30 @@ try {
     }, 6000);
 
     await updateAnalytics('totalPaidOut', realWinShare);
-const roundHouseProfit = realBetsTotal - realWinShare;
-await updateAnalytics('houseProfit', roundHouseProfit);
-await updateAnalytics('botWin', botWinShare);
+    const roundHouseProfit = realBetsTotal - realWinShare;
+    await updateAnalytics('houseProfit', roundHouseProfit);
+    await updateAnalytics('botWin', botWinShare);
 
     const todayStr = new Date().toISOString().split('T')[0];
     const history = (await getState('analytics/history')) || [];
     const todayIdx = history.findIndex(h => h.date === todayStr);
     if (todayIdx >= 0) {
-      const roundHouseProfit = realBetsTotal - realWinShare;
-history[todayIdx].houseProfit = (history[todayIdx].houseProfit || 0) + roundHouseProfit;
-history[todayIdx].botBet = (history[todayIdx].botBet || 0) + botBetsTotal;
-history[todayIdx].botWin = (history[todayIdx].botWin || 0) + botWinShare;
-history[todayIdx].rounds = (history[todayIdx].rounds || 0) + 1;
-if (botWon) history[todayIdx].botWins = (history[todayIdx].botWins || 0) + 1;
-else history[todayIdx].playerWins = (history[todayIdx].playerWins || 0) + 1;
+      history[todayIdx].houseProfit = (history[todayIdx].houseProfit || 0) + roundHouseProfit;
+      history[todayIdx].botBet = (history[todayIdx].botBet || 0) + botBetsTotal;
+      history[todayIdx].botWin = (history[todayIdx].botWin || 0) + botWinShare;
+      history[todayIdx].rounds = (history[todayIdx].rounds || 0) + 1;
+      if (botWon) history[todayIdx].botWins = (history[todayIdx].botWins || 0) + 1;
+      else history[todayIdx].playerWins = (history[todayIdx].playerWins || 0) + 1;
     } else {
-  const roundHouseProfit = realBetsTotal - realWinShare;
-  history.push({
-    date: todayStr,
-    houseProfit: roundHouseProfit,
-  botBet: botBetsTotal,
-  botWin: botWinShare,
-  rounds: 1,
-  botWins: botWon ? 1 : 0,
-  playerWins: botWon ? 0 : 1
-});
+      history.push({
+        date: todayStr,
+        houseProfit: roundHouseProfit,
+        botBet: botBetsTotal,
+        botWin: botWinShare,
+        rounds: 1,
+        botWins: botWon ? 1 : 0,
+        playerWins: botWon ? 0 : 1
+      });
     }
     await setState('analytics/history', history.slice(-30));
 
@@ -1712,20 +1712,19 @@ app.post(
       if (wd.acceptedBy !== agentId) return res.json({ ok: false, msg: '❌ ይህ request ያንተ አይደለም!' });
 
       const uid = String(wd.user_id);
-const amount = wd.amount || 0;
-const method = wd.method || 'ባንክ';
-const account = wd.account || '—';
-const BOT_TOKEN = process.env.BOT_TOKEN || '';
-const agents = JSON.parse(
-  (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
-);
-const agentCode = agents[agentId]?.code || agentId;
+      const amount = wd.amount || 0;
+      const method = wd.method || 'ባንክ';
+      const account = wd.account || '—';
+      const BOT_TOKEN = process.env.BOT_TOKEN || '';
+      const agents = JSON.parse(
+        (await pool.query("SELECT value FROM game_state WHERE key='agents'")).rows[0]?.value || '{}'
+      );
+      const agentCode = agents[agentId]?.code || agentId;
 
       if (file && BOT_TOKEN) {
         try {
           const boundary = '----FormBoundary' + Date.now();
-
-const caption = `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`;
+          const caption = `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`;
           const body = Buffer.concat([
             Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${uid}\r\n`),
             Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption}\r\n`),
@@ -1746,23 +1745,22 @@ const caption = `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${
           });
         } catch(e) { console.error('❌ TG photo error:', e.message); }
       }
-      
+
       allWd[key].status = 'approved';
-await setState('bot/withdrawals', allWd);
-await updateAnalytics('totalWithdrawals', amount);
+      await setState('bot/withdrawals', allWd);
+      await updateAnalytics('totalWithdrawals', amount);
 
-// ✅ pending_withdrawal ያጸዳል
-await pool.query(
-  "UPDATE game_state SET value='0' WHERE key=$1",
-  [`users/${uid}/pending_withdrawal`]
-);
+      await pool.query(
+        "UPDATE game_state SET value='0' WHERE key=$1",
+        [`users/${uid}/pending_withdrawal`]
+      );
 
-await pool.query(
-  'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
-  [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`, Date.now()]
-);
-broadcast({ type: 'withdrawal_approved', key, uid, amount });
-res.json({ ok: true });
+      await pool.query(
+        'INSERT INTO notifications(uid,message,time,read) VALUES($1,$2,$3,false)',
+        [uid, `✅ ${amount} ብር በ ${method} ተላከ!\n📋 Account: ${account}\n🔖 Agent: ${agentCode}`, Date.now()]
+      );
+      broadcast({ type: 'withdrawal_approved', key, uid, amount });
+      res.json({ ok: true });
     } catch(e) { res.json({ ok: false, msg: e.message }); }
   }
 );
@@ -1791,14 +1789,12 @@ app.get('/db-get', async (req, res) => {
     const { path } = req.query;
     if (!path) return res.json(null);
 
-    // ትክክለኛ key ፈልግ
     const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [path]);
     if (r.rows.length) {
       try { return res.json(JSON.parse(r.rows[0].value)); }
       catch { return res.json(r.rows[0].value); }
     }
 
-    // Prefix search — bot/photo_pool/xxx ያሉ keys ሁሉ ይሰብሰባል
     const prefix = path.endsWith('/') ? path : path + '/';
     const r2 = await pool.query(
       'SELECT key, value FROM game_state WHERE key LIKE $1',
@@ -1868,11 +1864,9 @@ app.post('/clear-cloudinary', async (req, res) => {
   try {
     const auth = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString('base64');
 
-    // Active promos ውስጥ ያሉ photo URLs ይሰበስባል
     const activePromos = await pool.query('SELECT photo_url FROM promotions WHERE active=true AND photo_url IS NOT NULL');
     const activeUrls = new Set(activePromos.rows.map(r => r.photo_url).filter(Boolean));
 
-    // Cloudinary ላይ ያሉ images ሁሉ ያምጣል
     const resources = await new Promise((resolve) => {
       const options = {
         hostname: 'api.cloudinary.com',
@@ -1892,7 +1886,6 @@ app.post('/clear-cloudinary', async (req, res) => {
       req2.end();
     });
 
-    // Active promos ውስጥ የሌሉ images ይሰርዛል
     let deleted = 0;
     for (const resource of resources) {
       const url = resource.secure_url;
@@ -1924,6 +1917,7 @@ app.post('/clear-cloudinary', async (req, res) => {
     res.json({ ok: false, msg: e.message });
   }
 });
+
 // ══ SCHEDULED GROUP ANNOUNCE ══
 setInterval(async () => {
   try {
@@ -1988,6 +1982,7 @@ app.post('/set-group-announce-interval', async (req, res) => {
     res.json({ ok: true, msg: `✅ ${minutes} ደቂቃ set ተደረገ!` });
   } catch(e) { res.json({ ok: false, msg: e.message }); }
 });
+
 app.get('/all-balances', async (req, res) => {
   try {
     const r = await pool.query('SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false');
@@ -2001,6 +1996,7 @@ app.get('/all-balances', async (req, res) => {
     res.json(balances);
   } catch(e) { res.json({}); }
 });
+
 // ══ BOT USERS ══
 app.get('/bot-users', async (req, res) => {
   try {
@@ -2026,17 +2022,13 @@ app.get('/bot-users', async (req, res) => {
     res.json({ ok: false, users: {}, msg: e.message });
   }
 });
-// ══════════════════════════════════════════════════════════════
-// /extract-sms  —  REF + Amount extractor
-// server.js ውስጥ ሌሎች app.post/app.get routes ካሉበት ቦታ ጨምር
-// ══════════════════════════════════════════════════════════════
 
+// ══ EXTRACT SMS ══
 app.post('/extract-sms', (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.json({ refs: [], amount: 0 });
 
-    // ── Line break fixes ──
     const cleaned = text
       .replace(/(https?:\/\/\S+)\s*\n\s*(\/\S+)/g, '$1$2')
       .replace(/((?:DE|FT)[A-Z0-9]*)\n([A-Z0-9]+)/gi, '$1$2');
@@ -2047,45 +2039,25 @@ app.post('/extract-sms', (req, res) => {
       if (r && !refs.includes(r)) refs.push(r);
     };
 
-    // ── REF patterns ──
-
-    // CBE Mbreciept URL: /FT261174ZP1W-41057146
     for (const m of cleaned.matchAll(/\/([A-Z0-9]{8,20})-\d+/gi))
       addRef(m[1]);
-
-    // CBE BranchReceipt URL: /BranchReceipt/FT261246TDJJ&41057146
     for (const m of cleaned.matchAll(/\/BranchReceipt\/([A-Z0-9]{8,20})[&\-]/gi))
       addRef(m[1]);
-
-    // CBE id URL: /?id=FT26118W65DX41057146
     for (const m of cleaned.matchAll(/[?&]id=([A-Z0-9]{8,24})/gi))
-      addRef(m[1].slice(0, 14)); // first 14 chars = REF
-
-    // "with Ref No FTxxxxxxxx"
+      addRef(m[1].slice(0, 14));
     for (const m of cleaned.matchAll(/Ref\s+No\s+(FT[A-Z0-9]{6,16})/gi))
       addRef(m[1]);
-
-    // "bank transaction number is FTxxxxxxx"
     for (const m of cleaned.matchAll(/bank\s+transaction\s+number\s+is\s+(FT[A-Z0-9]{6,16})/gi))
       addRef(m[1]);
-
-    // "transaction number is DExxxxxxx" / "by transaction number DExxxxxxx"
     for (const m of cleaned.matchAll(/transaction\s+number\s+is\s+([A-Z]{2}[A-Z0-9]{6,14})/gi))
       addRef(m[1]);
-
-    // /receipt/DExxxxxxx
     for (const m of cleaned.matchAll(/\/receipt\/([A-Z0-9]{8,16})/gi))
       addRef(m[1]);
-
-    // Bare FT... anywhere
     for (const m of cleaned.matchAll(/\b(FT[A-Z0-9]{6,16})\b/gi))
       addRef(m[1]);
-
-    // Bare DE... anywhere
     for (const m of cleaned.matchAll(/\b(DE[A-Z0-9]{6,14})\b/gi))
       addRef(m[1]);
 
-    // ── Amount patterns ──
     let amount = 0;
     const amtPatterns = [
       /credited\s+with\s+ETB\s+([\d,]+\.?\d*)/i,
@@ -2100,14 +2072,10 @@ app.post('/extract-sms', (req, res) => {
       const m = cleaned.match(pat);
       if (m) {
         const val = parseFloat(m[1].replace(/,/g, '').replace(/\.$/, ''));
-        if (val > 0) {
-          amount = val;
-          break;
-        }
+        if (val > 0) { amount = val; break; }
       }
     }
 
-    // ── is_bank_sms check ──
     const bankKeywords = [
       'from: 127', 'from: cbe',
       'ethio telecom',
@@ -2132,18 +2100,14 @@ app.post('/extract-sms', (req, res) => {
 
     console.log(`[extract-sms] refs=${JSON.stringify(refs)} amount=${amount} is_bank=${is_bank}`);
 
-    res.json({
-      refs,
-      amount,
-      is_bank,
-      cleaned: cleaned.slice(0, 300), // debug ለሆነ
-    });
+    res.json({ refs, amount, is_bank, cleaned: cleaned.slice(0, 300) });
 
   } catch (err) {
     console.error('[extract-sms] error:', err);
     res.status(500).json({ refs: [], amount: 0, error: err.message });
   }
 });
+
 app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
   try {
     const smsText = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
@@ -2175,17 +2139,18 @@ app.post('/sms', express.text({type: '*/*'}), async (req, res) => {
     res.json({ status: 'ok' });
   }
 });
-// ── Auto-release expired locks (server-side) ──
+
+// ── Auto-release expired locks ──
 setInterval(async () => {
   try {
     const LOCK_MS = 3 * 60 * 1000;
     const now = Date.now();
-    
+
     const r = await pool.query(
       "SELECT value FROM game_state WHERE key='bot/withdrawals'"
     );
     const withdrawals = r.rows.length ? JSON.parse(r.rows[0].value) : {};
-    
+
     let changed = false;
     for (const [key, wd] of Object.entries(withdrawals)) {
       if (wd.status !== 'accepted') continue;
@@ -2198,7 +2163,7 @@ setInterval(async () => {
         console.log(`⏰ Auto-released: ${key}`);
       }
     }
-    
+
     if (changed) {
       await setState('bot/withdrawals', withdrawals);
     }
@@ -2206,18 +2171,18 @@ setInterval(async () => {
     console.error('❌ Auto-release error:', e.message);
   }
 }, 30 * 1000);
+
 // ══ DELETE USER ══
 app.post('/delete-user', async (req, res) => {
   try {
     const { uid } = req.body;
     if (!uid) return res.json({ ok: false, msg: 'uid missing' });
-    // ── Secret key check ──
     const secret = req.body.secret;
-const config = await pool.query("SELECT value FROM game_state WHERE key='adminConfig'");
-const adminPass = JSON.parse(config.rows[0]?.value || '{}').loginPassword;
-if (!secret || secret !== adminPass) {
-  return res.json({ ok: false, msg: 'Unauthorized' });
-}
+    const config = await pool.query("SELECT value FROM game_state WHERE key='adminConfig'");
+    const adminPass = JSON.parse(config.rows[0]?.value || '{}').loginPassword;
+    if (!secret || secret !== adminPass) {
+      return res.json({ ok: false, msg: 'Unauthorized' });
+    }
 
     await pool.query('DELETE FROM users WHERE uid=$1', [uid]);
 
@@ -2244,29 +2209,21 @@ if (!secret || secret !== adminPass) {
     res.json({ ok: false, msg: e.message });
   }
 });
-// ══════════════════════════════════════════════════
-//  AGENT HEARTBEAT — server.js ውስጥ ጨምር
-// ══════════════════════════════════════════════════
 
-// Memory store — agents status
-// (restart ሲሆን ይጠፋል — DB ካለህ ወደ DB ማስቀምጥ ትችላለህ)
-const agentStatus = {};  // { agentId: { status, lastSeen, activeRequests } }
+// ══ AGENT HEARTBEAT ══
+const agentStatus = {};
 
-// ── POST /agent-heartbeat ──
-// Agent panel ይህን ይጠራል (every 20s)
 app.post('/agent-heartbeat', (req, res) => {
   const { agentId, status, activeRequests, lastSeen } = req.body;
-
   if (!agentId) return res.json({ ok: false, msg: 'agentId required' });
 
   agentStatus[agentId] = {
-    status:         status || 'online',   // online | away | offline
+    status:         status || 'online',
     activeRequests: activeRequests || 0,
     lastSeen:       lastSeen || new Date().toISOString(),
     updatedAt:      Date.now()
   };
 
-  // Auto-offline — 45 ሰኮንድ heartbeat ካልመጣ offline ይሆናል
   clearTimeout(agentStatus[agentId]._timer);
   agentStatus[agentId]._timer = setTimeout(() => {
     if (agentStatus[agentId]) {
@@ -2274,19 +2231,14 @@ app.post('/agent-heartbeat', (req, res) => {
     }
   }, 45000);
 
-  // SSE broadcast — admin panel real-time ያዘምናል
   broadcast({ type: 'agent_status_update', agents: sanitizeAgents() });
-
   res.json({ ok: true });
 });
 
-// ── GET /agent-status ──
-// Admin panel ይህን ያነባል
 app.get('/agent-status', (req, res) => {
   res.json({ ok: true, agents: sanitizeAgents() });
 });
 
-// _timer field አያሳይም
 function sanitizeAgents() {
   const result = {};
   for (const [id, data] of Object.entries(agentStatus)) {
@@ -2300,26 +2252,6 @@ function sanitizeAgents() {
   return result;
 }
 
-// ── broadcastSSE helper (ካልነበረ ጨምር) ──
-// SSE clients list ካለህ አስተካክል — ካልሆነ ይህን ጨምር:
-//
-// const sseClients = [];
-//
-// app.get('/events', (req, res) => {
-//   res.setHeader('Content-Type', 'text/event-stream');
-//   res.setHeader('Cache-Control', 'no-cache');
-//   res.setHeader('Connection', 'keep-alive');
-//   sseClients.push(res);
-//   req.on('close', () => {
-//     const i = sseClients.indexOf(res);
-//     if (i !== -1) sseClients.splice(i, 1);
-//   });
-// });
-//
-// function broadcastSSE(data) {
-//   const msg = `data: ${JSON.stringify(data)}\n\n`;
-//   sseClients.forEach(client => client.write(msg));
-// }
 app.post('/open-bot', async (req, res) => {
   try {
     const { userId, type, amount } = req.body;
@@ -2347,7 +2279,7 @@ app.post('/open-bot', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyData) }
       };
-      const r2 = https.request(opts, (r) => { 
+      const r2 = https.request(opts, (r) => {
         let d = '';
         r.on('data', c => d += c);
         r.on('end', () => { console.log('📩 TG response:', d.slice(0,100)); resolve(); });
@@ -2357,9 +2289,9 @@ app.post('/open-bot', async (req, res) => {
     });
 
     res.json({ ok: true });
-  } catch(e) { 
+  } catch(e) {
     console.error('❌ open-bot error:', e.message);
-    res.json({ ok: false, msg: e.message }); 
+    res.json({ ok: false, msg: e.message });
   }
 });
 
