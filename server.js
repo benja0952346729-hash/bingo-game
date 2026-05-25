@@ -969,9 +969,11 @@ app.post('/confirm-card', async (req, res) => {
 
     const total = Object.keys(allCards).length;
     const pct = (await getState('game/percent')) || 80;
-    const prize = Math.floor(bet * total * (pct / 100));
+    const totalBet = bet * total;
+    // 5 card ካልሞሉ prize = total bet ሙሉ፣ 5 እና በላይ ከሆነ percent ይቀነሳል
+    const prize = total < 5 ? totalBet : Math.floor(totalBet * (pct / 100));
     await setState('game/prize', prize);
-    await setState('game/total', bet * total);
+    await setState('game/total', totalBet);
 
     await updateAnalytics('totalCollected', bet);
 
@@ -1071,8 +1073,13 @@ const ALL_WIN_LINES = [
 
 // Target card ላይ random winning line ይምረጥ — FREE ሳይቆጠር
 function getWinningLine(board) {
-  const shuffled = [...ALL_WIN_LINES].sort(() => Math.random() - 0.5);
-  for (const line of shuffled) {
+  // Fisher-Yates shuffle — truly random (sort() bias አይደለም)
+  const lines = [...ALL_WIN_LINES];
+  for (let i = lines.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [lines[i], lines[j]] = [lines[j], lines[i]];
+  }
+  for (const line of lines) {
     const nums = line.map(i => board[i]).filter(n => n !== 'FREE');
     if (nums.length > 0) return nums;
   }
@@ -1130,6 +1137,15 @@ async function startAutoGame() {
     const callSpeed = (await getState('autoMode/callSpeed')) || 6000;
     await addBotsIfNeeded();
 
+    // ── cards ሙሉ ለሙሉ 0 ከሆነ → countdown ይደገማል ──
+    const currentCards = (await getState('game/confirmedNumbers')) || {};
+    if (Object.keys(currentCards).length === 0) {
+      console.log('⚠️ Cards 0 ነው — countdown ይደገማል');
+      broadcast({ type: 'waiting_players', current: 0, needed: 1 });
+      await startAutoCountdown();
+      return;
+    }
+
     setTimeout(() => { autoCallNumber(callSpeed); }, 2000);
   } catch(e) {
     console.error('❌ startAutoGame error:', e.message);
@@ -1144,8 +1160,9 @@ async function addBotsIfNeeded() {
 
     const minCards = (await getState('smartBot/minCards')) || 5;
     const allCards = (await getState('game/confirmedNumbers')) || {};
-    const realPlayerCount = Object.keys(allCards).length;
-    const botsNeeded = Math.max(0, minCards - realPlayerCount);
+
+    const totalCards = Object.keys(allCards).length;
+    const botsNeeded = Math.max(0, minCards - totalCards);
     if (botsNeeded === 0) return;
 
     const bet = (await getState('game/bet')) || 0;
@@ -1168,7 +1185,7 @@ async function addBotsIfNeeded() {
     await setState('game/confirmedNumbers', allCards);
     const total = Object.keys(allCards).length;
     const newTotal = bet * total;
-    const newPrize = Math.floor(newTotal * (pct / 100));
+    const newPrize = total < 5 ? newTotal : Math.floor(newTotal * (pct / 100));
     await setState('game/prize', newPrize);
     await setState('game/total', newTotal);
     await updateAnalytics('botBet', bet * botsNeeded);
@@ -1213,21 +1230,32 @@ async function autoCallNumber(speed) {
   const botBetsTotal  = bet * botCards.length;
 
   const totalCards = Object.keys(allCards).length;
-  const prize = Math.floor(bet * totalCards * (gamePct / 100));
+  const totalBetAmount = bet * totalCards;
+  const prize = totalCards < 5 ? totalBetAmount : Math.floor(totalBetAmount * (gamePct / 100));
   await setState('game/prize', prize);
 
   const botWinPercent = (await getState('autoMode/botWinPercent')) ?? 50;
-  const roll = Math.floor(Math.random() * 100) + 1;
+
+  // ── Card ብዛት + botWinPercent አብሮ ይሰራል ──
+  const botWeight  = botCards.length  * botWinPercent;
+  const realWeight = realCards.length * (100 - botWinPercent);
+  const totalWeight = botWeight + realWeight;
+
   let targetCard = null;
-  if (roll <= botWinPercent) {
-    targetCard = botCards.length > 0
-      ? botCards[Math.floor(Math.random() * botCards.length)]
-      : realCards.length > 0 ? realCards[Math.floor(Math.random() * realCards.length)] : null;
+  if (totalWeight === 0) {
+    targetCard = null;
   } else {
-    targetCard = realCards.length > 0
-      ? realCards[Math.floor(Math.random() * realCards.length)]
-      : botCards.length > 0 ? botCards[Math.floor(Math.random() * botCards.length)] : null;
+    const roll = Math.random() * totalWeight;
+    if (roll < botWeight && botCards.length > 0) {
+      targetCard = botCards[Math.floor(Math.random() * botCards.length)];
+    } else if (realCards.length > 0) {
+      targetCard = realCards[Math.floor(Math.random() * realCards.length)];
+    } else {
+      targetCard = botCards[Math.floor(Math.random() * botCards.length)];
+    }
   }
+
+  console.log(`⚖️ botWeight:${botWeight} realWeight:${realWeight} → target:${targetCard?.isBot ? 'BOT' : 'REAL'}`);
 
   if (!targetCard) {
     console.log('⚠️ No target card — scheduling next round');
@@ -1242,6 +1270,10 @@ async function autoCallNumber(speed) {
   // ══ FIX: neededNums = አንድ random winning line ብቻ ══
   const neededNums = getWinningLine(targetBoard);
   console.log(`🎯 Target: ${targetCard.cardId} (${targetCard.isBot ? 'BOT' : 'REAL'}) | Line: [${neededNums.join(',')}]`);
+
+  // ══ Game start ላይ አንድ ጊዜ ብቻ ያነባል — DB load ይቀንሳል ══
+  const noBotBias = (await getState('autoMode/noBotBias')) ?? 0.50;
+  console.log(`⚙️ noBotBias: ${noBotBias}`);
 
   callTimer = setInterval(async () => {
     try {
@@ -1278,19 +1310,13 @@ async function autoCallNumber(speed) {
       // ══ FIX: neededRemaining = target winning line ውስጥ ያልወጡ ቁጥሮች ══
       const neededRemaining = neededNums.filter(n => !calledNumbers.includes(n));
 
-      const noBotBias = (await getState('autoMode/noBotBias')) ?? 0.50;
       const rand = Math.random();
       let n;
       if (neededRemaining.length <= 3 && neededRemaining.length > 0 && rand < noBotBias) {
         // Target line ን ለማጠናቀቅ needed number ይምረጥ
         n = neededRemaining[Math.floor(Math.random() * neededRemaining.length)];
-      } else if (neededRemaining.length > 3) {
-        // Target line ገና ብዙ ቁጥሮች ስላሉ — non-needed ይምረጥ
-        const nonNeeded = remaining.filter(x => !neededNums.includes(x));
-        n = nonNeeded.length > 0
-          ? nonNeeded[Math.floor(Math.random() * nonNeeded.length)]
-          : remaining[Math.floor(Math.random() * remaining.length)];
       } else {
+        // ሙሉ random — fair ነው፣ target አትጎዳ
         n = remaining[Math.floor(Math.random() * remaining.length)];
       }
 
@@ -1512,16 +1538,34 @@ async function announceWinner(realBetsTotal, botBetsTotal) {
   } catch(e) { console.error('❌ announceWinner error:', e.message); }
 }
 
+// ══ ኢትዮጵያ ጠዋት 12:00 (6:00 AM UTC+3) reset key ══
+function getEthiopianDayKey() {
+  // UTC+3 ሰዓት ያሰላል
+  const now = new Date();
+  const etMs = now.getTime() + (3 * 60 * 60 * 1000); // UTC+3
+  const etDate = new Date(etMs);
+  // ጠዋት 6:00 AM UTC+3 = Ethiopian 12:00 ጠዋት
+  // ስለዚህ ቀን key = ቀኑ ጠዋት 6:00 AM ጀምሮ ቀጣዩ 6:00 AM ድረስ
+  const hour = etDate.getUTCHours();
+  const dateStr = etDate.toISOString().split('T')[0];
+  // 6:00 AM በፊት ከሆነ ቀዳሚው ቀን key ይሆናል
+  if (hour < 6) {
+    const prevDay = new Date(etMs - 24 * 60 * 60 * 1000);
+    return prevDay.toISOString().split('T')[0];
+  }
+  return dateStr;
+}
+
 async function scheduleNextRound() {
   if (!autoModeOn) return;
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getEthiopianDayKey();
     const lastReset = await getState('analytics/lastResetDate');
     if (lastReset !== todayStr) {
       await setState('analytics/lastResetDate', todayStr);
       roundNumber = 1;
       await setState('autoMode/round', roundNumber);
-      console.log('🔄 Daily Reset:', todayStr);
+      console.log('🔄 Ethiopian Daily Reset (12:00 ጠዋት):', todayStr);
     }
 
     roundNumber++;
