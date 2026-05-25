@@ -40,6 +40,17 @@ pool.query(`
 `).then(() => console.log('✅ last_activity column ready!'))
   .catch(e => console.error('ALTER error:', e.message));
 
+pool.query(`
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT false;
+`).then(() => console.log('✅ is_blocked column ready!'))
+  .catch(e => console.error('ALTER is_blocked error:', e.message));
+
+pool.query(`
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS joined_at BIGINT DEFAULT 0;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS is_new_read BOOLEAN DEFAULT false;
+`).then(() => console.log('✅ joined_at + is_new_read columns ready!'))
+  .catch(e => console.error('ALTER joined_at error:', e.message));
+
 
 async function getState(key) {
   const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [key]);
@@ -86,12 +97,17 @@ app.get('/user-state', async (req, res) => {
     const isNew = existing.rows.length === 0;
     if (isNew) {
       await pool.query(
-        'INSERT INTO users(uid,display,balance,is_bot) VALUES($1,$2,20,false)',
-        [userId, displayName]
+        'INSERT INTO users(uid,display,balance,is_bot,joined_at,is_new_read) VALUES($1,$2,20,false,$3,false)',
+        [userId, displayName, Date.now()]
       );
+      // ወዲያው admin ላይ broadcast
+      const newCount = await pool.query(
+        'SELECT COUNT(*) FROM users WHERE is_bot=false AND is_new_read=false AND joined_at > 0'
+      );
+      broadcast({ type: 'new_user', uid: userId, name: displayName, newCount: Number(newCount.rows[0].count) });
     } else {
       await pool.query(
-  'UPDATE users SET display=$2, last_activity=$3 WHERE uid=$1',
+  'UPDATE users SET display=$2, last_activity=$3, is_blocked=false WHERE uid=$1',
   [userId, displayName, Date.now()]
 );
     }
@@ -895,7 +911,20 @@ async function broadcastPromotion(promoData) {
                 'Content-Length': Buffer.byteLength(bodyData)
               }
             };
-            const r2 = https.request(opts, (r) => { r.on('data', ()=>{}); r.on('end', resolve); });
+            const r2 = https.request(opts, (r) => {
+              let d = '';
+              r.on('data', c => d += c);
+              r.on('end', async () => {
+                try {
+                  const res = JSON.parse(d);
+                  if (!res.ok && res.error_code === 403) {
+                    await pool.query('UPDATE users SET is_blocked=true WHERE uid=$1', [uid]);
+                    console.log(`🚫 Blocked user: ${uid}`);
+                  }
+                } catch {}
+                resolve();
+              });
+            });
             r2.on('error', resolve);
             r2.write(bodyData); r2.end();
           });
@@ -1889,6 +1918,57 @@ app.post('/db-push', async (req, res) => {
   } catch(e) { res.json({ ok: false, msg: e.message }); }
 });
 
+// ══ NEW USERS COUNT ══
+app.get('/new-users-count', async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT COUNT(*) FROM users WHERE is_bot=false AND is_new_read=false AND joined_at > 0'
+    );
+    const count = Number(r.rows[0].count);
+    res.json({ count });
+  } catch(e) { res.json({ count: 0 }); }
+});
+
+// ══ MARK NEW USERS READ ══
+app.post('/mark-new-users-read', async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE users SET is_new_read=true WHERE is_bot=false AND is_new_read=false'
+    );
+    res.json({ ok: true });
+  } catch(e) { res.json({ ok: false, msg: e.message }); }
+});
+
+// ══ DAILY USER STATS ══
+app.get('/daily-user-stats', async (req, res) => {
+  try {
+    // ከ 7 ቀን join stats
+    const joinStats = await pool.query(`
+      SELECT 
+        DATE(to_timestamp(joined_at/1000) AT TIME ZONE 'Africa/Addis_Ababa') as day,
+        COUNT(*) as joined
+      FROM users 
+      WHERE is_bot=false AND joined_at > $1
+      GROUP BY day ORDER BY day DESC LIMIT 7
+    `, [Date.now() - 7 * 24 * 60 * 60 * 1000]);
+
+    // ከ 7 ቀን blocked (left) stats
+    const leftStats = await pool.query(`
+      SELECT 
+        DATE(to_timestamp(last_activity/1000) AT TIME ZONE 'Africa/Addis_Ababa') as day,
+        COUNT(*) as left_count
+      FROM users 
+      WHERE is_bot=false AND is_blocked=true AND last_activity > $1
+      GROUP BY day ORDER BY day DESC LIMIT 7
+    `, [Date.now() - 7 * 24 * 60 * 60 * 1000]);
+
+    res.json({ 
+      join: joinStats.rows, 
+      left: leftStats.rows 
+    });
+  } catch(e) { res.json({ join: [], left: [] }); }
+});
+
 app.get('/fix-pending', async (req, res) => {
   try {
     const { uid } = req.query;
@@ -2044,7 +2124,7 @@ app.get('/bot-users', async (req, res) => {
     const now = Date.now();
     const LIVE_MS = 5 * 60 * 1000;
     const r = await pool.query(
-      'SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false'
+      'SELECT uid, display, balance, last_activity, is_blocked, joined_at, is_new_read FROM users WHERE is_bot = false'
     );
     const users = {};
     r.rows.forEach(row => {
@@ -2055,7 +2135,9 @@ app.get('/bot-users', async (req, res) => {
         balance:      Number(row.balance || 0),
         last_activity: lastActivity,
         is_live:      lastActivity !== null && (now - lastActivity) < LIVE_MS,
-        joined_at:    '',
+        is_blocked:   row.is_blocked || false,
+        joined_at:    row.joined_at ? Number(row.joined_at) : null,
+        is_new_read:  row.is_new_read || false,
       };
     });
     res.json({ ok: true, users });
