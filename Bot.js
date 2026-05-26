@@ -208,41 +208,78 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => log(`🌐 Admin API running on port ${PORT}`));
 
-// ══ POLL: smartBot/enabled — 30 ሰኮንድ (ቀደም 3 ሰኮንድ ነበር) ══
-async function pollSmartBotEnabled() {
-  try {
-    const val = await getState('smartBot/enabled');
-    if (val === true && !smartBotEnabled) {
-      smartBotEnabled = true;
-      log('Smart Bot ENABLED by admin');
-      startBotEngine();
-    } else if (!val && smartBotEnabled) {
-      smartBotEnabled = false;
-      log('Smart Bot DISABLED by admin');
-      stopBotEngine();
-    }
-  } catch (e) {
-    log(`❌ pollSmartBotEnabled error: ${e.message}`);
-  }
-}
-setInterval(pollSmartBotEnabled, 30000); // 3000 → 30000 ✅
+// ══ SSE LISTENER — polling ሙሉ ጥፋ ══
+const EventSource = require('eventsource');
+const SERVER_URL = process.env.SERVER_URL || 'https://game-production-7f86.up.railway.app';
 
-// ══ POLL: game status — engine restart ══
-// Game ሲጠናቀቅ bot engine ይጀምራል
-async function pollGameStatus() {
+let sseReconnectTimer = null;
+
+function connectSSE() {
   try {
-    if (!smartBotEnabled) return;
-    if (botEngineRunning) return; // አስቀድሞ running ነው
-    const status = await getState('game/status');
-    if (!status?.started) {
-      log('▶ Game ended — restarting bot engine');
-      startBotEngine();
-    }
+    const sse = new EventSource(`${SERVER_URL}/events`);
+
+    sse.onopen = () => {
+      log('✅ SSE connected — polling ጠፍቷል');
+      if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+    };
+
+    sse.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+
+        // ══ state_update events ══
+        if (data.type === 'state_update') {
+          const { key, value } = data;
+
+          // smartBot/enabled
+          if (key === 'smartBot/enabled') {
+            if (value === true && !smartBotEnabled) {
+              smartBotEnabled = true;
+              log('▶ Smart Bot ENABLED via SSE');
+              startBotEngine();
+            } else if (!value && smartBotEnabled) {
+              smartBotEnabled = false;
+              log('⏹ Smart Bot DISABLED via SSE');
+              stopBotEngine();
+            }
+          }
+
+          // game/status — game ሲጠናቀቅ engine restart
+          if (key === 'game/status') {
+            if (!value?.started && smartBotEnabled && !botEngineRunning) {
+              log('▶ Game ended via SSE — restarting bot engine');
+              startBotEngine();
+            }
+          }
+
+          // RAM cache ያዘምናል — DB query አያስፈልግም
+          if (key === 'game/bet') cachedBet = value;
+          if (key === 'game/percent') cachedPct = (value || 80) / 100;
+          if (key === 'game/botFill') cachedBotFill = Math.max(1, Math.min(100, Number(value) || 50));
+          if (key === 'game/confirmedNumbers') { cachedConf = value || {}; confCacheTime = Date.now(); }
+          if (key === 'game/countdown') { ramCountdown = value || {}; }
+          if (key === 'game/status') { ramStatus = value || {}; }
+        }
+      } catch(err) {
+        log(`❌ SSE parse error: ${err.message}`);
+      }
+    };
+
+    sse.onerror = (err) => {
+      log('⚠️ SSE disconnected — reconnecting in 5s...');
+      sse.close();
+      sseReconnectTimer = setTimeout(connectSSE, 5000);
+    };
+
   } catch(e) {
-    log(`❌ pollGameStatus error: ${e.message}`);
+    log(`❌ SSE connect error: ${e.message}`);
+    sseReconnectTimer = setTimeout(connectSSE, 5000);
   }
 }
-setInterval(pollGameStatus, 5000); // 5 ሰኮንድ
+
+// RAM cache for SSE data
+let ramStatus = {};
+let ramCountdown = {};
 
 // ══ BOT ENGINE ══
 function startBotEngine() {
@@ -281,28 +318,11 @@ async function botEngineTick() {
 
     const now = Date.now();
 
-    // ══ CACHE — bet, percent, botFill 30 ሰኮንድ አንድ ጊዜ ብቻ ያነባል ══
-    if (!cachedBet || now - cacheTime > CACHE_TTL) {
-      const [betVal, pctVal, fillVal] = await Promise.all([
-        getState('game/bet'),
-        getState('game/percent'),
-        getState('game/botFill'),
-      ]);
-      cachedBet = betVal || 0;
-      cachedPct = (pctVal || 80) / 100;
-      cachedBotFill = Math.max(1, Math.min(100, Number(fillVal) ?? 50));
-      cacheTime = now;
-      log(`🔄 Cache refreshed: bet=${cachedBet} pct=${cachedPct} fill=${cachedBotFill}`);
-    }
+    // ══ bet/pct/fill — RAM ብቻ (SSE ያዘምናል) ══
 
-    // ══ ሁሉም tick ያነባል — status እና countdown ብቻ ══
-    const [statusData, cdData] = await Promise.all([
-      getState('game/status'),
-      getState('game/countdown'),
-    ]);
-
-    const status = statusData || {};
-    const cd = cdData || {};
+    // ══ RAM ይጠቀማል — DB query 0 ══
+    const status = ramStatus || {};
+    const cd = ramCountdown || {};
 
     // ── Game live ሲሆን → engine ይቆማል — queries ይቀነሳል ══
     if (status.started) {
@@ -324,13 +344,6 @@ async function botEngineTick() {
       return;
     }
 
-    // ── confirmedNumbers + botIds — 5 ሰኮንድ አንድ ጊዜ ብቻ ──
-    if (now - confCacheTime > CONF_TTL) {
-      cachedConf = (await getState('game/confirmedNumbers')) || {};
-      const botRes = await pool.query('SELECT uid FROM users WHERE is_bot=true');
-      cachedBotIds = new Set(botRes.rows.map(r => String(r.uid)));
-      confCacheTime = now;
-    }
 
     const allEntries = Object.values(cachedConf);
     let realPlayers = 0;
@@ -426,8 +439,41 @@ function keepAlive() {
 setInterval(keepAlive, 10 * 60 * 1000);
 
 // ══ STARTUP ══
-log('🚀 Smart Bot v9.0 running');
-log('📌 Cache TTL: 30s (bet, percent, botFill)');
-log('📌 pollSmartBotEnabled: 30s');
-log('📌 pollRealPlayers: removed — tick ውስጥ ይሰራል');
-pollSmartBotEnabled();
+log('🚀 Smart Bot v10.0 running — SSE mode');
+log('📌 Polling: ሙሉ ጠፍቷል — SSE ብቻ');
+log('📌 DB queries: ~95% ቅናሽ');
+
+// Initial state load — አንድ ጊዜ ብቻ
+async function initState() {
+  try {
+    const [bet, pct, fill, status, cd, conf, botEnabled] = await Promise.all([
+      getState('game/bet'),
+      getState('game/percent'),
+      getState('game/botFill'),
+      getState('game/status'),
+      getState('game/countdown'),
+      getState('game/confirmedNumbers'),
+      getState('smartBot/enabled'),
+    ]);
+    cachedBet = bet || 0;
+    cachedPct = (pct || 80) / 100;
+    cachedBotFill = Math.max(1, Math.min(100, Number(fill) || 50));
+    ramStatus = status || {};
+    ramCountdown = cd || {};
+    cachedConf = conf || {};
+    confCacheTime = Date.now();
+    cacheTime = Date.now();
+
+    if (botEnabled === true) {
+      smartBotEnabled = true;
+      log('▶ Smart Bot auto-started from DB');
+      startBotEngine();
+    }
+
+    log('✅ Initial state loaded from DB');
+  } catch(e) {
+    log(`❌ initState error: ${e.message}`);
+  }
+}
+
+initState().then(() => connectSSE());
