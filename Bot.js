@@ -210,7 +210,7 @@ app.listen(PORT, () => log(`🌐 Admin API running on port ${PORT}`));
 
 // ══ SSE LISTENER — polling ሙሉ ጥፋ ══
 const EventSource = require('eventsource');
-const SERVER_URL = process.env.SERVER_URL || 'https://game-production-7f86.up.railway.app';
+const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 
 let sseReconnectTimer = null;
 
