@@ -41,12 +41,18 @@ pool.query(`
   .catch(e => console.error('ALTER error:', e.message));
 
 
+const memCache = {};
+
 async function getState(key) {
+  if(memCache[key] !== undefined) return memCache[key];
   const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [key]);
-  return r.rows.length ? JSON.parse(r.rows[0].value) : null;
+  const val = r.rows.length ? JSON.parse(r.rows[0].value) : null;
+  if(val !== null) memCache[key] = val;
+  return val;
 }
 
 async function setState(key, value) {
+  memCache[key] = value;
   await pool.query(
     'INSERT INTO game_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
     [key, JSON.stringify(value)]
