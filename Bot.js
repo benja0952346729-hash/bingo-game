@@ -26,6 +26,8 @@ async function setState(key, value) {
       'INSERT INTO game_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
       [key, JSON.stringify(value)]
     );
+    // SSE ለሁሉም listeners አሳውቅ
+    notifyListeners(key, value);
   } catch (e) {
     log(`❌ setState(${key}) error: ${e.message}`);
   }
@@ -39,6 +41,62 @@ async function upsertUser(uid, display, isBot, balance) {
     );
   } catch (e) {
     log(`❌ upsertUser error: ${e.message}`);
+  }
+}
+
+// ══════════════════════════════════════════
+// ══ SSE LISTENER REGISTRY ══
+// ══════════════════════════════════════════
+
+// Map<key, Set<res>> — ለእያንዳንዱ DB key የሚጠብቁ SSE clients
+const sseListeners = new Map();
+
+/**
+ * setState() ከተጠራ በኋላ ይህ ይሰራል።
+ * ከዚህ key ጋር የተገናኙ ሁሉም SSE clients ወዲያ ይቀበላሉ።
+ */
+function notifyListeners(key, value) {
+  const clients = sseListeners.get(key);
+  if (!clients || clients.size === 0) return;
+  const payload = JSON.stringify({ key, value, ts: Date.now() });
+  for (const res of clients) {
+    try {
+      res.write(`data: ${payload}\n\n`);
+    } catch (e) {
+      clients.delete(res);
+    }
+  }
+}
+
+function addListener(key, res) {
+  if (!sseListeners.has(key)) sseListeners.set(key, new Set());
+  sseListeners.get(key).add(res);
+}
+
+function removeListener(key, res) {
+  const clients = sseListeners.get(key);
+  if (clients) clients.delete(res);
+}
+
+// ══ PostgreSQL LISTEN/NOTIFY (optional — if trigger exists) ══
+// game_state table ላይ trigger ካለ DB-level ለውጦችም ይደርሳሉ።
+async function setupDbListen() {
+  try {
+    const client = await pool.connect();
+    await client.query('LISTEN game_state_changed');
+    client.on('notification', (msg) => {
+      try {
+        const { key, value } = JSON.parse(msg.payload);
+        notifyListeners(key, typeof value === 'string' ? JSON.parse(value) : value);
+        log(`📡 DB NOTIFY → ${key}`);
+      } catch (e) {
+        log(`⚠️ NOTIFY parse error: ${e.message}`);
+      }
+    });
+    client.on('error', (e) => log(`❌ LISTEN client error: ${e.message}`));
+    log('📡 PostgreSQL LISTEN/NOTIFY ready');
+  } catch (e) {
+    log(`⚠️ LISTEN setup failed (triggers optional): ${e.message}`);
   }
 }
 
@@ -108,19 +166,6 @@ let lastBotAddedTime = 0;
 let currentCdMinutes = 3;
 let prevRealCount = 0;
 
-// ══ CACHE — DB queries ለመቀነስ ══
-let cachedBet = null;
-let cachedPct = null;
-let cachedBotFill = null;
-let cacheTime = 0;
-const CACHE_TTL = 30000; // 30 ሰኮንድ
-
-// ══ confirmedNumbers + botIds cache — 5 ሰኮንድ ══
-let cachedConf = {};
-let cachedBotIds = new Set();
-let confCacheTime = 0;
-const CONF_TTL = 5000; // 5 ሰኮንድ
-
 // ══ REAL PLAYER RATE TRACKER ══
 const realPlayerHistory = [];
 
@@ -177,7 +222,112 @@ function getCardCount(availableCount) {
   return Math.min(cardCount, availableCount);
 }
 
+// ══════════════════════════════════════════
+// ══ SSE WATCHER — smartBot/enabled ══
+//
+// Polling ፈንታ SSE ይጠቀማሉ።
+// setState('smartBot/enabled', ...) ሲጠራ
+// ወዲያ notifyListeners() → onSmartBotChange() ይሰራል።
+// ══════════════════════════════════════════
+
+async function onSmartBotChange(value) {
+  if (value === true && !smartBotEnabled) {
+    smartBotEnabled = true;
+    log('Smart Bot ENABLED by admin (SSE)');
+    startBotEngine();
+  } else if (!value && smartBotEnabled) {
+    smartBotEnabled = false;
+    log('Smart Bot DISABLED by admin (SSE)');
+    stopBotEngine();
+  }
+}
+
+// ══════════════════════════════════════════
+// ══ SSE WATCHER — game/confirmedNumbers ══
+//
+// Confirmed numbers ሲቀየር real player count ይሰላል።
+// ══════════════════════════════════════════
+
+async function onConfirmedNumbersChange(confData) {
+  try {
+    const conf = confData || {};
+    const allUids = Object.values(conf);
+    if (!allUids.length) { prevRealCount = 0; return; }
+
+    const botRes = await pool.query('SELECT uid FROM users WHERE is_bot=true');
+    const botIds = new Set(botRes.rows.map(r => String(r.uid)));
+
+    const realCount = allUids.filter(uid => !botIds.has(String(uid))).length;
+
+    if (realCount > prevRealCount) {
+      log(`Real player joined! Total real: ${realCount}`);
+    }
+
+    updateRealPlayerHistory(realCount);
+    prevRealCount = realCount;
+  } catch (e) {
+    log(`❌ onConfirmedNumbersChange error: ${e.message}`);
+  }
+}
+
+// ══════════════════════════════════════════
+// ══ INTERNAL SSE SUBSCRIPTION (in-process) ══
+//
+// setState() ሲጠራ notifyListeners() ይሰራል።
+// ከዚህ በታች ያሉት handlers በቀጥታ ያዳምጣሉ።
+// ══════════════════════════════════════════
+
+const internalHandlers = new Map();
+
+function subscribeInternal(key, handler) {
+  internalHandlers.set(key, handler);
+}
+
+// notifyListeners() ን override አድርጎ internal handlers ያስኬዳል
+const _originalNotify = notifyListeners;
+// (notifyListeners already calls internalHandlers via the wrapper below)
+
+// setState() ውስጥ notifyListeners() ይሰራል; ያንን extend እናደርጋለን:
+const _notifyWithInternal = (key, value) => {
+  // HTTP SSE clients
+  const clients = sseListeners.get(key);
+  if (clients && clients.size > 0) {
+    const payload = JSON.stringify({ key, value, ts: Date.now() });
+    for (const res of clients) {
+      try { res.write(`data: ${payload}\n\n`); }
+      catch (e) { clients.delete(res); }
+    }
+  }
+  // Internal in-process handlers
+  const handler = internalHandlers.get(key);
+  if (handler) handler(value);
+};
+
+// setState ውስጥ notifyListeners ን replace እናደርጋለን
+// (global function reassignment — same module scope)
+// eslint-disable-next-line no-global-assign
+Object.defineProperty(global, '__notifyListeners', { value: _notifyWithInternal, writable: true });
+
+// setState ን patch እናደርጋለን notifyListeners ፈንታ global ን እንዲጠቀም
+async function setStateSSE(key, value) {
+  try {
+    await pool.query(
+      'INSERT INTO game_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
+      [key, JSON.stringify(value)]
+    );
+    _notifyWithInternal(key, value);
+  } catch (e) {
+    log(`❌ setState(${key}) error: ${e.message}`);
+  }
+}
+// setState ን replace
+const setState = setStateSSE; // shadow the original
+
+// ══════════════════════════════════════════
 // ══ ENDPOINTS ══
+// ══════════════════════════════════════════
+
+// GET /admin/bot-fill — አሁን ያለውን fill አሳያል
 app.get('/admin/bot-fill', async (req, res) => {
   try {
     const fill = await getState('game/botFill') ?? 50;
@@ -188,13 +338,13 @@ app.get('/admin/bot-fill', async (req, res) => {
   }
 });
 
+// POST /admin/bot-fill — speed fill ይቀይራል
+// body: { fill: 1-100 }
 app.post('/admin/bot-fill', async (req, res) => {
   try {
     const fill = Math.max(1, Math.min(100, Number(req.body.fill)));
     if (isNaN(fill)) return res.json({ ok: false, error: 'Invalid value. Use 1-100.' });
     await setState('game/botFill', fill);
-    // Cache ያጸዳል — ወዲያው ይተገበራል
-    cachedBotFill = fill;
     const speedMultiplier = fill / 50;
     log(`Admin set botFill → ${fill} (speed ×${speedMultiplier.toFixed(2)})`);
     res.json({ ok: true, fill, speedMultiplier: speedMultiplier.toFixed(2) });
@@ -203,97 +353,79 @@ app.post('/admin/bot-fill', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════
+// ══ SSE ENDPOINT — /events ══
+//
+// Client ይህን endpoint ያዳምጣል።
+// ?keys=smartBot/enabled,game/confirmedNumbers
+// ምሳሌ:
+//   const es = new EventSource('/events?keys=smartBot/enabled,game/status');
+//   es.onmessage = e => console.log(JSON.parse(e.data));
+// ══════════════════════════════════════════
+
+app.get('/events', async (req, res) => {
+  const keysParam = req.query.keys || '';
+  const keys = keysParam.split(',').map(k => k.trim()).filter(Boolean);
+
+  if (keys.length === 0) {
+    return res.status(400).json({ error: 'keys query param required. e.g. ?keys=smartBot/enabled' });
+  }
+
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Nginx buffering ያቆማል
+  res.flushHeaders();
+
+  // ── ወዲያ አሁን ያሉ values ላክ ──
+  for (const key of keys) {
+    const current = await getState(key);
+    if (current !== null) {
+      res.write(`data: ${JSON.stringify({ key, value: current, ts: Date.now(), initial: true })}\n\n`);
+    }
+    addListener(key, res);
+  }
+
+  // Keep-alive heartbeat (30s)
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n'); }
+    catch (e) { clearInterval(heartbeat); }
+  }, 30000);
+
+  // Client ሲዘጋ cleanup
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    for (const key of keys) removeListener(key, res);
+    log(`SSE client disconnected (keys: ${keys.join(',')})`);
+  });
+
+  log(`SSE client connected (keys: ${keys.join(',')})`);
+});
+
+// ── SERVER START ──
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => log(`🌐 Admin API running on port ${PORT}`));
 
-// ══ SSE LISTENER — polling ሙሉ ጥፋ ══
-const EventSource = require('eventsource');
-const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
+// ══════════════════════════════════════════
+// ══ SUBSCRIBE — internal handlers ══
+//
+// Polling setInterval ፈንታ SSE-based subscriptions
+// ══════════════════════════════════════════
 
-let sseReconnectTimer = null;
+subscribeInternal('smartBot/enabled', onSmartBotChange);
+subscribeInternal('game/confirmedNumbers', onConfirmedNumbersChange);
 
-function connectSSE() {
-  try {
-    const sse = new EventSource(`${SERVER_URL}/events`);
-
-    sse.onopen = () => {
-      log('✅ SSE connected — polling ጠፍቷል');
-      if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
-    };
-
-    sse.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-
-        // ══ state_update events ══
-        if (data.type === 'state_update') {
-          const { key, value } = data;
-
-          // smartBot/enabled
-          if (key === 'smartBot/enabled') {
-            if (value === true && !smartBotEnabled) {
-              smartBotEnabled = true;
-              log('▶ Smart Bot ENABLED via SSE');
-              startBotEngine();
-            } else if (!value && smartBotEnabled) {
-              smartBotEnabled = false;
-              log('⏹ Smart Bot DISABLED via SSE');
-              stopBotEngine();
-            }
-          }
-
-          // game/status — game ሲጠናቀቅ engine restart
-          if (key === 'game/status') {
-            if (!value?.started && smartBotEnabled && !botEngineRunning) {
-              log('▶ Game ended via SSE — restarting bot engine');
-              startBotEngine();
-            }
-          }
-
-          // RAM cache ያዘምናል — DB query አያስፈልግም
-          if (key === 'game/bet') cachedBet = value;
-          if (key === 'game/percent') cachedPct = (value || 80) / 100;
-          if (key === 'game/botFill') cachedBotFill = Math.max(1, Math.min(100, Number(value) || 50));
-          if (key === 'game/confirmedNumbers') { cachedConf = value || {}; confCacheTime = Date.now(); }
-          if (key === 'game/countdown') { ramCountdown = value || {}; }
-          if (key === 'game/status') { ramStatus = value || {}; }
-        }
-      } catch(err) {
-        log(`❌ SSE parse error: ${err.message}`);
-      }
-    };
-
-    sse.onerror = (err) => {
-      log('⚠️ SSE disconnected — reconnecting in 5s...');
-      sse.close();
-      sseReconnectTimer = setTimeout(connectSSE, 5000);
-    };
-
-  } catch(e) {
-    log(`❌ SSE connect error: ${e.message}`);
-    sseReconnectTimer = setTimeout(connectSSE, 5000);
-  }
-}
-
-// RAM cache for SSE data
-let ramStatus = {};
-let ramCountdown = {};
-
+// ══════════════════════════════════════════
 // ══ BOT ENGINE ══
+// ══════════════════════════════════════════
+
 function startBotEngine() {
   if (botEngineRunning) return;
   botEngineRunning = true;
   lastBotAddedTime = 0;
-  // Cache ያጸዳል — አዲስ round ስለሆነ
-  cachedBet = null;
-  cachedPct = null;
-  cachedBotFill = null;
-  cacheTime = 0;
-  cachedConf = {};
-  cachedBotIds = new Set();
-  confCacheTime = 0;
   log('Bot engine started');
   botEngineTimer = setInterval(botEngineTick, 1000);
 }
@@ -313,55 +445,63 @@ async function botEngineTick() {
   try {
     const timeMultiplier = getTimeMultiplier();
     if (timeMultiplier === null) {
+      await setState('smartBot/status', 'DEAD_ZONE');
+      return;
+    }
+
+    const [confData, bet, pctRaw, statusData, cdData, botFillRaw] = await Promise.all([
+      getState('game/confirmedNumbers'),
+      getState('game/bet'),
+      getState('game/percent'),
+      getState('game/status'),
+      getState('game/countdown'),
+      getState('game/botFill'),
+    ]);
+
+    const conf = confData || {};
+    const betVal = bet || 0;
+    const pct = (pctRaw || 80) / 100;
+    const status = statusData || {};
+    const cd = cdData || {};
+
+    const fillVal = Math.max(1, Math.min(100, Number(botFillRaw) ?? 50));
+    const speedMultiplier = fillVal / 50;
+
+    if (status.started) {
+      await setState('smartBot/status', 'GAME_LIVE');
+      return;
+    }
+
+    if (!cd.active || !cd.startAt) {
+      await setState('smartBot/status', 'WAITING');
       return;
     }
 
     const now = Date.now();
-
-    // ══ bet/pct/fill — RAM ብቻ (SSE ያዘምናል) ══
-
-    // ══ RAM ይጠቀማል — DB query 0 ══
-    const status = ramStatus || {};
-    const cd = ramCountdown || {};
-
-    // ── Game live ሲሆን → engine ይቆማል — queries ይቀነሳል ══
-    if (status.started) {
-      stopBotEngine();
-      // Game ሲጠናቀቅ poll ይጀምራል — pollSmartBotEnabled ይጠራዋል
-      log('⏸ Game live — bot engine paused');
-      return;
-    }
-
-    // ── Countdown active check ──
-    if (!cd.active || !cd.startAt) {
-      return;
-    }
-
     const remainMs = Math.max(0, cd.startAt - now);
     const remainSecs = remainMs / 1000;
 
     if (remainSecs <= 0) {
+      await setState('smartBot/status', 'COUNTDOWN_ENDED');
       return;
     }
 
+    const botRes = await pool.query('SELECT uid FROM users WHERE is_bot=true');
+    const botIds = new Set(botRes.rows.map(r => String(r.uid)));
 
-    const allEntries = Object.values(cachedConf);
+    const allEntries = Object.values(conf);
     let realPlayers = 0;
-    allEntries.forEach(uid => { if (!cachedBotIds.has(String(uid))) realPlayers++; });
-
-    // Real player rate ── pollRealPlayers ተወገደ — tick ውስጥ ይሰራል ✅
-    updateRealPlayerHistory(realPlayers);
-    prevRealCount = realPlayers;
+    allEntries.forEach(uid => { if (!botIds.has(String(uid))) realPlayers++; });
 
     const totalSecs = (cd.cdMinutes || cd.mins || currentCdMinutes) * 60;
     const elapsedSecs = Math.max(1, totalSecs - remainSecs);
 
     if (elapsedSecs < 5) {
+      await setState('smartBot/status', 'WAITING_5S');
       return;
     }
 
     const realRate = getRealPlayerRate();
-    const speedMultiplier = cachedBotFill / 50;
 
     const BASE_GAP = 1500;
     const SENSITIVITY = 18.0;
@@ -369,16 +509,19 @@ async function botEngineTick() {
     let gapMs = BASE_GAP * (1 + Math.pow(realRate, 2) * SENSITIVITY);
     gapMs = gapMs / speedMultiplier;
     gapMs = gapMs * timeMultiplier;
+
     const variation = gapMs * 0.15;
     gapMs = gapMs + (Math.random() * variation * 2 - variation);
     gapMs = Math.max(150, Math.min(12000, gapMs));
 
-    log(`📊 fill:${cachedBotFill}(×${speedMultiplier.toFixed(2)}) | realRate:${realRate.toFixed(3)}/s | gap:${Math.round(gapMs)}ms | ×${timeMultiplier.toFixed(2)} | ${Math.round(remainSecs)}s | real:${realPlayers}`);
+    await setState('smartBot/status',
+      `ACTIVE|fill:${fillVal}(×${speedMultiplier.toFixed(2)})|realRate:${realRate.toFixed(3)}/s|gap:${Math.round(gapMs)}ms|tMult:×${timeMultiplier.toFixed(2)}|remain:${Math.round(remainSecs)}s|real:${realPlayers}`
+    );
+
+    log(`📊 fill:${fillVal}(×${speedMultiplier.toFixed(2)}) | realRate:${realRate.toFixed(3)}/s | gap:${Math.round(gapMs)}ms | ×${timeMultiplier.toFixed(2)} | ${Math.round(remainSecs)}s | real:${realPlayers}`);
 
     if (now - lastBotAddedTime >= gapMs) {
-      await addOneBot(cachedConf, cachedBotIds, cachedBet, cachedPct);
-      // Bot ጨምሮ ስለሆነ conf cache ያጸዳል — ወዲያው ይዘምናል
-      confCacheTime = 0;
+      await addOneBot(conf, botIds, betVal, pct);
     }
 
   } catch (err) {
@@ -429,51 +572,29 @@ async function addOneBot(confData, botIds, bet, pct) {
   log(`✅ Bot: ${botName} → Card #${selectedCards.join(',')} (${cardCount} cards)`);
 }
 
+// ══ STARTUP ══
+log('🚀 Smart Bot v9.0 (SSE) running');
+log('📌 GET  /admin/bot-fill       → fill አሳያል');
+log('📌 POST /admin/bot-fill       → { fill: 1-100 } speed ይቀይራል');
+log('📌 GET  /events?keys=<k1,k2>  → SSE stream');
+log('   Example: /events?keys=smartBot/enabled,game/confirmedNumbers');
+
+// ══ DB LISTEN/NOTIFY setup ══
+setupDbListen();
+
+// ══ INITIAL STATE LOAD ══
+// Server ሲጀምር smartBot/enabled ን አንድ ጊዜ ብቻ ያነባል
+(async () => {
+  const val = await getState('smartBot/enabled');
+  await onSmartBotChange(val);
+})();
+
 // ══ SELF-PING (keep-alive) ══
 const SERVICE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+
 function keepAlive() {
   fetch(`${SERVICE_URL}/health`)
     .then(() => log('💓 Keep-alive ping sent'))
     .catch(e => log(`⚠️ Keep-alive failed: ${e.message}`));
 }
 setInterval(keepAlive, 10 * 60 * 1000);
-
-// ══ STARTUP ══
-log('🚀 Smart Bot v10.0 running — SSE mode');
-log('📌 Polling: ሙሉ ጠፍቷል — SSE ብቻ');
-log('📌 DB queries: ~95% ቅናሽ');
-
-// Initial state load — አንድ ጊዜ ብቻ
-async function initState() {
-  try {
-    const [bet, pct, fill, status, cd, conf, botEnabled] = await Promise.all([
-      getState('game/bet'),
-      getState('game/percent'),
-      getState('game/botFill'),
-      getState('game/status'),
-      getState('game/countdown'),
-      getState('game/confirmedNumbers'),
-      getState('smartBot/enabled'),
-    ]);
-    cachedBet = bet || 0;
-    cachedPct = (pct || 80) / 100;
-    cachedBotFill = Math.max(1, Math.min(100, Number(fill) || 50));
-    ramStatus = status || {};
-    ramCountdown = cd || {};
-    cachedConf = conf || {};
-    confCacheTime = Date.now();
-    cacheTime = Date.now();
-
-    if (botEnabled === true) {
-      smartBotEnabled = true;
-      log('▶ Smart Bot auto-started from DB');
-      startBotEngine();
-    }
-
-    log('✅ Initial state loaded from DB');
-  } catch(e) {
-    log(`❌ initState error: ${e.message}`);
-  }
-}
-
-initState().then(() => connectSSE());
