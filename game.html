@@ -1,0 +1,4270 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Bingo Pro</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#06080f;
+  --surface:#0b0d1a;
+  --card:#101320;
+  --card2:#151828;
+  --border:#1c2038;
+  --border2:#28305a;
+  --gold:#f0c040;
+  --gold2:#b8880a;
+  --gold3:rgba(240,192,64,.1);
+  --green:#00e676;
+  --green2:rgba(0,230,118,.1);
+  --red:#ff3355;
+  --red2:rgba(255,51,85,.1);
+  --blue:#3d7fff;
+  --purple:#9b4dff;
+  --cyan:#00d4ff;
+  --cyan2:rgba(0,212,255,.08);
+  --text:#dde2f0;
+  --muted:#3a4868;
+  --r:11px;
+  --r2:17px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* ── SCREENS ── */
+.screen{display:none;min-height:100vh;flex-direction:column;}
+.screen.active{display:flex;}
+#selectScreen{
+  padding-bottom:0;
+  flex-direction:column;
+  height:100vh;
+  overflow:hidden;
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  background: rgba(5,6,14,.95);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-bottom: 1px solid rgba(240,192,64,.12);
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 0 0 0 transparent, 0 4px 30px rgba(0,0,0,.5);
+}
+.topbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 10%; right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(240,192,64,.4), transparent);
+  pointer-events: none;
+}
+.logo{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.5rem;letter-spacing:5px;
+  background:linear-gradient(135deg,#ffe066,var(--gold),#c8960a);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 10px rgba(240,192,64,.45));
+}
+.info-badges{display:flex;gap:5px;flex-wrap:wrap;}
+.badge{
+  display:inline-flex;align-items:center;gap:3px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:20px;padding:3px 8px;
+  font-size:0.67rem;font-weight:700;
+}
+.badge .val{color:var(--gold);}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  border:none;border-radius:var(--r);
+  font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;transition:all .15s;
+}
+.btn:active{transform:scale(0.95)!important;}
+
+#liveBtn{
+  display:none;
+  background:linear-gradient(135deg,#cc001e,var(--red));
+  color:#fff;padding:5px 12px;font-size:0.75rem;
+  border-radius:20px;border:none;cursor:pointer;font-weight:700;font-family:'Outfit',sans-serif;
+  animation:livePulse 1.4s infinite;
+}
+@keyframes livePulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,51,85,.6);}
+  60%{box-shadow:0 0 0 8px rgba(255,51,85,0);}
+}
+
+/* Bet box left div */
+.bet-box {
+  background: linear-gradient(145deg, #0d1018, #090c16);
+  border: 1px solid rgba(240,192,64,.25);
+  border-radius: 18px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 30px rgba(240,192,64,.06), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.bet-box::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,transparent 50%,rgba(240,192,64,.03));
+  pointer-events:none;
+}
+.bet-label{font-size:0.6rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:1px;}
+.bet-val{
+  font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--gold);
+  text-shadow:0 0 14px rgba(240,192,64,.35);line-height:1;
+}
+.prize-val{
+  font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--green);
+  text-shadow:0 0 14px rgba(0,230,118,.35);line-height:1;
+}
+
+/* ── COUNTDOWN ── */
+#countdownBar{
+  display:none;
+  margin:0 10px;
+  background:linear-gradient(135deg,#00060e,#000d1a);
+  border:1px solid rgba(0,212,255,.25);
+  border-radius:var(--r);
+  padding:4px 13px;
+  align-items:center;justify-content:space-between;gap:8px;
+  animation:cdGlow 2s infinite alternate;
+}
+#countdownBar.active{display:flex;}
+@keyframes cdGlow{
+  from{box-shadow:0 0 6px rgba(0,212,255,.1);}
+  to{box-shadow:0 0 20px rgba(0,212,255,.32);}
+}
+#countdownBar.active{display:flex;}
+.cd-bar-label{font-size:0.58rem;color:var(--cyan);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:1px;}
+.cd-bar-val{
+  font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--cyan);line-height:1;
+  text-shadow:0 0 18px rgba(0,212,255,.55);
+}
+.cd-bar-sub{font-size:0.64rem;color:var(--muted);margin-top:2px;}
+.cd-pulse{
+  width:9px;height:9px;border-radius:50%;background:var(--cyan);flex-shrink:0;
+  animation:cdDotPulse 1s infinite;
+}
+@keyframes cdDotPulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.2;transform:scale(.55);}}
+
+/* ── CARD PREVIEW PANEL ── */
+#cardPreviewPanel {
+  visibility:hidden;
+  opacity:0;
+  width:62%;
+  margin:0 auto 4px;
+  background:linear-gradient(135deg,#080e00,#001008);
+  border:1.5px solid rgba(240,192,64,.4);
+  border-radius:var(--r);
+  padding:4px 6px;
+  animation:previewIn .22s cubic-bezier(.34,1.56,.64,1);
+  position:relative;
+}
+@keyframes previewIn{0%{transform:scale(.93) translateY(6px);opacity:0;}100%{transform:scale(1) translateY(0);opacity:1;}}
+#cardPreviewPanel.show{
+  visibility:visible;
+  opacity:1;
+}
+.preview-header{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;
+}
+.preview-title{
+  font-family:'Bebas Neue',sans-serif;font-size:0.72rem;letter-spacing:2px;color:var(--gold);
+}
+.preview-close{
+  background:rgba(255,51,85,.12);border:1px solid var(--red);color:var(--red);
+  border-radius:4px;padding:1px 5px;font-size:0.5rem;font-weight:700;cursor:pointer;
+}
+.preview-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;}
+.preview-cell{
+  background:var(--surface);border-radius:2px;padding:1px;
+  text-align:center;font-size:0.42rem;font-weight:700;
+  line-height:1.6;border:1px solid var(--border);
+  transition:all .2s ease;
+}
+.preview-cell.ph{
+  background:var(--gold);color:#06080f;
+  font-family:'Bebas Neue',sans-serif;font-size:0.48rem;border-color:var(--gold);
+}
+.preview-cell.pf{background:#003d1e;color:var(--green);border-color:#004d26;}
+/* ── LEGEND ── */
+.legend-row{
+  display:flex;align-items:center;gap:7px;
+  padding:5px 10px 4px;flex-wrap:wrap;
+  background:rgba(8,10,20,.7);
+  border-bottom:1px solid var(--border);
+}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:0.62rem;color:var(--muted);}
+.legend-dot{width:9px;height:9px;border-radius:2px;display:inline-block;flex-shrink:0;}
+.legend-dot.taken-dot{background:var(--red2);border:1.5px solid var(--red);}
+.legend-dot.mine-dot{background:var(--green2);border:1.5px solid var(--green);}
+.legend-dot.free-dot{background:var(--card);border:1.5px solid var(--border);}
+.count-row{margin-left:auto;font-size:0.62rem;}
+
+/* ── LEADERBOARD ── */
+#leaderboardPanel{display:none;margin:0 10px 8px;flex-direction:column;gap:6px;}
+#leaderboardPanel.show{display:flex;}
+.lb-header{display:flex;align-items:center;justify-content:space-between;padding:0 2px;}
+.lb-title{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:3px;color:var(--gold);}
+.lb-called-badge{
+  display:flex;align-items:center;gap:4px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:20px;padding:3px 9px;font-size:0.65rem;
+}
+.lb-called-badge .lbc-num{font-family:'Bebas Neue',sans-serif;font-size:.9rem;color:var(--red);}
+.lb-row{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--r);padding:8px 10px;
+  display:flex;align-items:center;gap:8px;
+  position:relative;overflow:hidden;transition:border-color .25s;
+}
+.lb-row.lb-mine{
+  border-color:rgba(240,192,64,.4);
+  background:linear-gradient(135deg,#120e00,#0a0d00);
+}
+.lb-row.lb-mine-green{
+  border-color:rgba(0,230,118,.5);
+  background:linear-gradient(135deg,#001a0e,#000d07);
+  animation:myRowPulse 1.8s infinite;
+}
+@keyframes myRowPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(0,230,118,0);}
+  50%{box-shadow:0 0 8px 2px rgba(0,230,118,.3);}
+}
+#gameScreen .lb-row.lb-mine-green .lb-bar{
+  background:linear-gradient(90deg,rgba(0,230,118,.15),transparent);
+}
+.lb-row.lb-top{border-color:rgba(255,51,85,.4);}
+.lb-bar{
+  position:absolute;left:0;top:0;bottom:0;
+  background:linear-gradient(90deg,rgba(0,230,118,.07),transparent);
+  transition:width .5s ease;pointer-events:none;
+}
+.lb-row.lb-mine .lb-bar{background:linear-gradient(90deg,rgba(240,192,64,.09),transparent);}
+.lb-rank{
+  font-family:'Bebas Neue',sans-serif;font-size:1.2rem;
+  width:22px;text-align:center;flex-shrink:0;color:var(--muted);
+}
+#gameScreen .game-board-wrap.single-card .gc{
+  padding:6px 2px;font-size:0.82rem;
+}
+#gameScreen .game-board-wrap.single-card .gc.header{
+  font-size:1rem;
+}
+.lb-rank.r1{color:#f0c040;}.lb-rank.r2{color:#aab4c8;}.lb-rank.r3{color:#cd7f32;}
+.lb-info{flex:1;min-width:0;}
+.lb-name{font-size:0.75rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lb-card-id{font-size:0.58rem;color:var(--muted);margin-top:1px;}
+.lb-hits{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0;}
+.lb-hit-num{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;line-height:1;color:var(--green);}
+.lb-hit-label{font-size:0.54rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+.lb-progress-dots{display:flex;gap:2px;flex-wrap:wrap;max-width:72px;justify-content:flex-end;}
+.lb-dot{width:6px;height:6px;border-radius:2px;background:var(--border);transition:background .25s;}
+.lb-dot.hit{background:var(--green);}
+.lb-dot.hit-mine{background:var(--gold);}
+.lb-empty{text-align:center;padding:16px;color:var(--muted);font-size:0.78rem;}
+
+/* ── CARDS SECTION ── */
+.cards-section{padding:4px 10px;}
+.cards-section h3{
+  font-size:0.65rem;letter-spacing:2.5px;text-transform:uppercase;
+  color:var(--cyan);margin-bottom:7px;
+}
+.cards-grid{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:7px;
+}
+.card-num{
+  background:#1e1e1e;
+  border:none;
+  border-radius:12px;
+  padding:0;
+  text-align:center;font-weight:700;font-size:1.1rem;
+  cursor:pointer;
+  min-width:0;
+  position:relative;
+  aspect-ratio:1;
+  display:flex;align-items:center;justify-content:center;
+  color:#ffffff;
+}
+.card-num.selected{
+  background:#f5a623;
+  color:#000;
+  border:none;
+}
+.card-num.mine{
+  background:#00a844 !important;
+  color:#fff !important;
+  border:none !important;
+  cursor:default;
+  font-weight:900 !important;
+}
+.card-num.taken{
+  background:#ff0000 !important;
+  color:#fff !important;
+  border:none !important;
+  cursor:not-allowed !important;
+  font-weight:900 !important;
+}
+.card-num.just-taken{animation:flashTaken .55s ease forwards;}
+.card-num.just-mine{animation:flashMine .55s ease forwards;}
+
+@keyframes flashTaken{
+  0%{background:var(--red);color:#fff;transform:scale(1.3);box-shadow:0 0 16px var(--red);}
+  60%{transform:scale(1.1);}
+  100%{background:linear-gradient(135deg,#1e000a,#130008);color:var(--red);border-color:#550020;transform:scale(1);box-shadow:none;}
+}
+@keyframes flashMine{
+  0%{background:var(--green);color:#06080f;transform:scale(1.3);box-shadow:0 0 16px var(--green);}
+  60%{transform:scale(1.1);}
+  100%{background:linear-gradient(135deg,#002e18,#001e10);color:var(--green);border-color:#00512a;transform:scale(1);box-shadow:none;}
+}
+
+/* ── BOTTOM BAR ── */
+#bottomBar{
+  position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:rgba(5,6,18,.97);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-top:1px solid rgba(61,127,255,.12);
+  padding:7px 12px 14px;
+  display:flex;align-items:center;gap:8px;
+  box-shadow:
+    0 -1px 0 rgba(61,127,255,.08),
+    0 -10px 30px rgba(0,0,0,.5);
+}
+#bottomBar::before{
+  content:'';
+  position:absolute;
+  top:0;left:15%;right:15%;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(61,127,255,.35),transparent);
+  pointer-events:none;
+}
+#confirmBtn{
+  flex:1;
+  background:linear-gradient(135deg,#2244cc,#3d7fff);
+  color:#fff;padding:9px 14px;border-radius:12px;
+  font-size:0.78rem;font-weight:800;
+  box-shadow:0 3px 14px rgba(61,127,255,.4);
+  border:none;cursor:pointer;transition:all .15s;
+  letter-spacing:0.5px;position:relative;overflow:hidden;
+}
+#confirmBtn::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);
+  border-radius:12px;pointer-events:none;
+}
+#confirmBtn:active{transform:scale(.96);}
+#confirmBtn .sel-badge{
+  background:rgba(0,0,0,.25);border-radius:6px;
+  padding:1px 6px;font-size:0.62rem;margin-left:3px;
+}
+#accountBtn{
+  flex-shrink:0;width:42px;height:42px;
+  background:linear-gradient(145deg,#0d1028,#080c20);
+  border:1.5px solid rgba(61,127,255,.25);
+  border-radius:12px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  cursor:pointer;
+  position:relative;overflow:hidden;
+  box-shadow:0 3px 14px rgba(0,0,0,.4);
+  transition:all .2s cubic-bezier(.34,1.56,.64,1);
+}
+#accountBtn::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(145deg,rgba(61,127,255,.1),transparent);
+  pointer-events:none;
+}
+#accountBtn:active{transform:scale(.88);}
+#accountBtn:hover{
+  border-color:rgba(61,127,255,.5);
+  box-shadow:0 0 18px rgba(61,127,255,.2);
+}
+#accountBtn .acc-icon{font-size:0.9rem;line-height:1;position:relative;z-index:1;}
+#accountBtn .acc-label{
+  font-size:0.32rem;letter-spacing:1px;text-transform:uppercase;
+  color:#3d7fff;font-weight:700;position:relative;z-index:1;
+}
+
+/* ── GAME SCREEN ── */
+#gameScreen{padding-bottom:0;flex-direction:column;height:100vh;overflow:hidden;}
+#gameScreen.active{display:flex;}
+
+.tv-wrap{
+  background:#000;
+  border:1px solid var(--border);
+  border-radius:8px;padding:5px;
+  box-shadow:0 0 16px rgba(0,0,0,.5);
+}
+.tv-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;}
+.tv-cell{
+  background:#0d0f18;color:var(--text);
+  font-size:0.85rem;font-weight:900;
+  padding:1px;border-radius:3px;
+  display:flex;justify-content:center;align-items:center;
+  min-height:15px;min-width:15px;transition:all .18s;
+}
+.tv-cell.header{
+  background:var(--gold);color:#06080f;
+  font-family:'Bebas Neue',sans-serif;font-size:.7rem;
+}
+.tv-cell.called{
+  background:#0a0000!important;color:var(--red)!important;
+  outline:1.5px solid var(--red);font-size:0.85rem!important;
+  box-shadow:0 0 7px rgba(255,51,85,.5);
+  animation:numPop .28s ease;
+}
+@keyframes numPop{0%{transform:scale(1);}50%{transform:scale(1);}100%{transform:scale(1);}}
+
+.last-called-bar{
+  margin:0 10px 2px;
+  background:transparent;
+  border:none;
+  border-radius:0;padding:2px 14px;
+  display:flex;align-items:center;overflow:hidden;
+}
+.lc-label{font-size:0.52rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+.lc-num{
+  font-family:'Bebas Neue',sans-serif;font-size:1.6rem;
+  color:var(--gold);text-shadow:0 0 18px rgba(240,192,64,.45);line-height:1;
+}
+.lc-letter{color:var(--red);}
+.mini-balls{display:flex;flex-wrap:wrap;gap:3px;max-width:170px;justify-content:flex-end;overflow:hidden;}
+.mball{
+  width:17px;height:17px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.48rem;font-weight:900;
+}
+.bB{background:#2260e0;color:#fff;}
+.bI{background:#8833ee;color:#fff;}
+.bN{background:var(--red);color:#fff;}
+.bG{background:#00a844;color:#fff;}
+.bO{background:var(--gold);color:#06080f;}
+
+/* ── GAME CARDS ── */
+.game-cards-wrap{padding:0 10px;}
+.game-cards-wrap h4{font-size:0.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:6px;}
+.cards-section-label{
+  font-size:0.6rem;letter-spacing:2.5px;text-transform:uppercase;
+  padding:4px 8px;margin-bottom:5px;border-radius:6px;
+  display:inline-block;font-weight:700;
+}
+.label-mine{background:#002a14;color:var(--green);}
+.label-others{background:#160008;color:var(--red);}
+.game-board-wrap{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r);padding:8px;margin-bottom:7px;
+}
+.game-board-wrap.other-card{border-color:#2a0818;background:#0d0410;}
+.game-board-title{font-size:0.72rem;font-weight:700;margin-bottom:6px;}
+.game-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;}
+.gc{
+  background:var(--surface);border-radius:4px;
+  padding:5px 1px;text-align:center;font-size:0.68rem;font-weight:700;
+  transition:background .18s;
+}
+.gc.header{background:var(--gold);color:#06080f;font-family:'Bebas Neue',sans-serif;font-size:0.8rem;}
+.gc.free-cell{background:#003318;color:var(--green);}
+.gc.hit-mine{
+  background:linear-gradient(135deg,#00a844,var(--green));
+  color:#06080f;
+}
+.gc.hit-other{background:linear-gradient(135deg,#440018,var(--red));color:#fff;}
+.gc.win-cell{
+  outline:2px solid #ff2200;
+  box-shadow:0 0 8px rgba(255,30,0,.8);
+  background:linear-gradient(135deg,#ff2200,#ff6600)!important;
+  color:#fff!important;
+  animation:winFlash .6s ease infinite alternate;
+}
+@keyframes winFlash{
+  from{box-shadow:0 0 8px rgba(255,30,0,.6);}
+  to{box-shadow:0 0 22px rgba(255,30,0,1);transform:scale(1.06);}
+}
+#gameScreen .tv-wrap{margin:0;width:100%;flex-shrink:0;}
+#gameScreen .gc{padding:2px 1px;font-size:0.63rem;}
+#gameScreen .gc.header{font-size:0.72rem;}
+#gameScreen .game-board-wrap{padding:2px;margin-bottom:3px;}
+#gameScreen .game-board-title{font-size:0.6rem;margin-bottom:3px;}
+#gameScreen .lb-row{padding:2px 4px;border-radius:6px;gap:3px;margin-bottom:2px;}
+#gameScreen .lb-rank{font-size:0.75rem;width:13px;}
+#gameScreen .lb-name{font-size:0.54rem;}
+#gameScreen .lb-card-id{font-size:0.46rem;}
+#gameScreen .lb-hit-num{font-size:0.8rem;}
+#gameScreen .lb-hit-label{font-size:0.38rem;}
+#gameScreen .lb-progress-dots{display:none;}
+#gameScreen .tv-cell.header{font-size:0.95rem;background:#ff8c00!important;color:#fff!important;}
+/* ══ GAME SCREEN ENHANCED ══ */
+#gameScreen .tv-wrap {
+  background:transparent;border:none;padding:0;box-shadow:none;
+}
+#gameScreen .tv-cell {
+  border-radius:4px;font-size:0.78rem;font-weight:900;
+  height:18px;min-height:unset;overflow:hidden;transition:background .2s,color .2s,box-shadow .2s;
+}
+#gameScreen .tv-cell.header {
+  background:linear-gradient(135deg,#f0c040,#c8960a)!important;
+  color:#06080f!important;font-size:0.82rem!important;
+  box-shadow:0 2px 8px rgba(240,192,64,.3);
+}
+#gameScreen .tv-cell.called {
+  background:linear-gradient(135deg,#1a0008,#0d0005)!important;
+  color:var(--red)!important;
+  outline:1.5px solid rgba(255,51,85,.6)!important;
+  box-shadow:inset 0 0 6px rgba(255,51,85,.3)!important;
+  font-size:0.78rem!important;
+}
+#gameScreen .lb-row {
+  padding:4px 5px;border-radius:8px;gap:3px;margin-bottom:2px;
+  border:1px solid rgba(255,255,255,.04);
+  background:rgba(255,255,255,.02);
+  transition:all .2s;
+}
+#gameScreen .lb-rank { 
+  font-size:0.48rem !important;
+  width:11px !important;
+  color:var(--muted);
+  font-family:'Bebas Neue',sans-serif;
+  line-height:1;
+}
+#gameScreen .lb-rank.r1 { color:#f0c040 !important; }
+#gameScreen .lb-rank.r2 { color:#aab4c8 !important; }
+#gameScreen .lb-rank.r3 { color:#cd7f32 !important; }
+#gameScreen .lb-row.lb-mine-green {
+  border-color:rgba(0,230,118,.35)!important;
+  background:linear-gradient(135deg,rgba(0,26,14,.8),rgba(0,13,7,.8))!important;
+}
+#gameScreen .lb-row.lb-top {
+  border-color:rgba(240,192,64,.3)!important;
+  background:linear-gradient(135deg,rgba(26,20,0,.8),rgba(13,10,0,.8))!important;
+}
+#gameScreen .lb-name { font-size:0.56rem;font-weight:700; }
+#gameScreen .lb-card-id { font-size:0.46rem;margin-top:1px; }
+#gameScreen .lb-hit-num { font-size:0.85rem; }
+#gameScreen .lb-hit-label { font-size:0.4rem; }
+#gameScreen .lb-progress-dots { display:none; }
+#gameScreen .game-board-wrap {
+  border-radius:10px;
+  background:linear-gradient(135deg,#08100a,#040a06);
+  border-color:rgba(0,230,118,.15);
+  padding:5px;margin-bottom:4px;
+}
+#gameScreen .gc { padding:3px 1px;font-size:0.65rem;border-radius:3px; }
+#gameScreen .gc.header {
+  background:linear-gradient(135deg,#f0c040,#c8960a);
+  font-size:0.75rem;
+}
+#gameScreen .gc.hit-mine {
+  background:linear-gradient(135deg,#004d26,#00e676)!important;
+  color:#06080f!important;
+  box-shadow:0 0 6px rgba(0,230,118,.4);
+}
+#gameScreen .game-board-title { font-size:0.58rem;margin-bottom:3px; }
+#gameScreen .tv-cell.called{font-size:0.85rem!important;}
+.back-btn{
+  position:fixed;bottom:4px;right:10px;
+  background:linear-gradient(135deg,#1a1f35,#0d1020);
+  border:1.5px solid rgba(255,255,255,.1);
+  color:#aab4c8;
+  padding:9px 14px;border-radius:var(--r);
+  font-size:0.75rem;font-weight:700;z-index:100;border:none;cursor:pointer;
+}
+
+/* ── ACCOUNT SCREEN ── */
+#accountScreen{
+  padding:0 0 80px;
+  background:#06080f;
+  overflow-y:auto;
+  height:100vh;
+  position:fixed;
+  inset:0;
+  z-index:200;
+}
+.acc-header{
+  padding:14px;
+  background:linear-gradient(180deg,rgba(240,192,64,.05) 0%,transparent 100%);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+.acc-header-back{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r);padding:7px 12px;font-size:0.75rem;color:var(--muted);cursor:pointer;
+}
+.acc-header-title{
+  font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:4px;color:var(--gold);
+}
+.acc-profile{
+  margin:13px 12px 0;
+  background:linear-gradient(135deg,#0e141c,#090d12);
+  border:1px solid rgba(240,192,64,.2);
+  border-radius:var(--r2);padding:16px;position:relative;overflow:hidden;
+}
+.acc-profile::before{
+  content:'';position:absolute;top:-30px;right:-30px;
+  width:100px;height:100px;border-radius:50%;
+  background:radial-gradient(circle,rgba(240,192,64,.1),transparent 70%);
+}
+.acc-profile-row{display:flex;align-items:center;gap:12px;margin-bottom:13px;}
+.acc-avatar{
+  width:46px;height:46px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.2rem;flex-shrink:0;
+  box-shadow:0 0 18px rgba(240,192,64,.25);
+}
+.acc-user-info{flex:1;min-width:0;}
+.acc-uid-label{font-size:0.6rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:1px;}
+.acc-uid-val{font-size:0.85rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.acc-balance-row{display:flex;align-items:flex-end;gap:5px;}
+.acc-bal-label{font-size:0.6rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:3px;}
+.acc-bal-val{
+  font-family:'Bebas Neue',sans-serif;font-size:2.8rem;line-height:1;
+  color:var(--gold);text-shadow:0 0 24px rgba(240,192,64,.35);
+}
+.acc-bal-unit{font-size:0.9rem;font-weight:700;color:var(--gold2);margin-bottom:5px;}
+
+.dep-section{margin:13px 12px 0;}
+.dep-section-title{
+  font-size:0.6rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--cyan);
+  margin-bottom:8px;display:flex;align-items:center;gap:5px;
+}
+.dep-section-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);}
+.deposit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;}
+.dep-btn{
+  background:linear-gradient(135deg,var(--card),var(--card2));
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 4px;text-align:center;cursor:pointer;
+  transition:all .15s;font-weight:700;font-size:0.85rem;
+}
+.dep-btn:hover{border-color:rgba(240,192,64,.5);color:var(--gold);}
+.dep-btn:active{transform:scale(.95);}
+.dep-btn .dep-etb{font-size:0.6rem;color:var(--muted);display:block;margin-top:1px;letter-spacing:1px;}
+.acc-my-cards-btn{
+  margin:0 12px;
+  background:linear-gradient(135deg,#070f08,#040a05);
+  border:1px solid rgba(0,230,118,.15);border-radius:var(--r);
+  padding:12px;display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;transition:all .13s;
+}
+.acc-my-cards-btn:hover{border-color:rgba(0,230,118,.35);}
+.acc-my-cards-btn:active{transform:scale(.98);}
+.acc-my-cards-left{display:flex;align-items:center;gap:9px;}
+.acc-my-cards-icon{font-size:1.2rem;}
+.acc-my-cards-text{font-size:0.85rem;font-weight:700;color:var(--green);}
+.acc-my-cards-sub{font-size:0.65rem;color:var(--muted);}
+.acc-my-cards-arrow{color:var(--muted);font-size:0.95rem;}
+
+/* ── OTHER SCREENS ── */
+#myCardsScreen{padding:0 12px 80px;}
+#winHistoryScreen,#historyScreen{padding:0 0 80px;}
+
+/* ── WINNER OVERLAY ── */
+#winnerOverlay{
+  display:none;position:fixed;inset:0;
+  z-index:9999999!important;
+  background:rgba(0,0,0,.94);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  justify-content:center;align-items:center;flex-direction:column;
+  overflow:hidden;
+}
+#winnerOverlay.show{
+  display:flex!important;
+  z-index:9999999!important;
+}
+/* ── WINNER BOARD ── */
+.wb-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;margin-top:4px;}
+.wb-cell{
+  background:#0a1a0a;border-radius:3px;padding:3px 1px;
+  text-align:center;font-size:0.55rem;font-weight:700;
+  border:1px solid #1a3a1a;color:#4a6a4a;
+}
+.wb-cell.wh{background:var(--gold);color:#06080f;font-family:'Bebas Neue',sans-serif;font-size:0.65rem;}
+.wb-cell.hit{background:#003318;color:var(--green);border-color:#005a2a;}
+.wb-cell.win-line{
+  background:linear-gradient(135deg,#f0c040,#ffdd00)!important;
+  color:#06080f!important;
+  border:2px solid #f0c040!important;
+  box-shadow:0 0 14px rgba(240,192,64,.9)!important;
+  font-weight:900!important;
+  color:#06080f;border-color:var(--green);
+  box-shadow:0 0 8px rgba(0,230,118,.6);
+  font-weight:900;
+}
+.wb-cell.free{background:#002a14;color:var(--green);}
+#winnerOverlay.show{
+  display:flex !important;
+  z-index:9999999 !important;
+}
+.confetti-wrap{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.confetti-dot{
+  position:absolute;width:9px;height:9px;border-radius:2px;
+  animation:confettiFall linear infinite;
+}
+@keyframes confettiFall{
+  0%{transform:translateY(-20px) rotate(0deg);opacity:1;}
+  100%{transform:translateY(110vh) rotate(720deg);opacity:0;}
+}
+.winner-popup{
+  background:linear-gradient(145deg,#08090f,#0d0f1e);
+  border:2px solid rgba(240,192,64,.3);
+  border-radius:26px;padding:20px 16px;text-align:center;
+  max-width:300px;width:90%;
+  max-height:92vh;
+  overflow-y:auto;
+  animation:winPop .55s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:
+    0 0 60px rgba(240,192,64,.2),
+    0 0 120px rgba(240,192,64,.08),
+    inset 0 1px 0 rgba(255,255,255,.06);
+  position:relative;z-index:1;
+}
+@keyframes winPop{
+  0%{transform:scale(.35) rotate(-12deg);opacity:0;}
+  70%{transform:scale(1.04) rotate(1.5deg);}
+  100%{transform:scale(1) rotate(0deg);opacity:1;}
+}
+.winner-popup .trophy{
+  font-size:3.5rem;
+  animation:trophyBounce .9s ease infinite alternate;
+  display:block;margin-bottom:8px;
+}
+@keyframes trophyBounce{from{transform:scale(1) rotate(-4deg);}to{transform:scale(1.1) rotate(4deg);}}
+.winner-popup h1{
+  font-family:'Bebas Neue',sans-serif;font-size:3.5rem;
+  background:linear-gradient(135deg,var(--gold),var(--green));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  letter-spacing:8px;line-height:1;margin-bottom:6px;
+}
+.winner-popup .winner-name{font-size:1.15rem;font-weight:900;color:#fff;margin-bottom:5px;}
+.winner-popup .winner-card-info{font-size:0.82rem;color:var(--muted);margin-bottom:12px;white-space:pre-line;}
+.winner-popup .prize-display{
+  font-family:'Bebas Neue',sans-serif;font-size:2.8rem;color:var(--green);
+  text-shadow:0 0 26px rgba(0,230,118,.5);line-height:1;margin-bottom:3px;
+}
+.winner-popup .prize-label{font-size:0.72rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;}
+.winner-popup .countdown-bar{margin-top:16px;height:3px;background:var(--border);border-radius:3px;overflow:hidden;}
+.winner-popup .countdown-bar .fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--gold),var(--green));
+  border-radius:3px;width:100%;
+  animation:cdFill 5s linear forwards;
+}
+@keyframes cdFill{from{width:100%;}to{width:0%;}}
+.winner-popup .close-hint{font-size:0.65rem;color:var(--muted);margin-top:6px;}
+/* ══ MY WINNER OVERLAY ══ */
+#myWinOverlay {
+  display:none;position:fixed;inset:0;z-index:99999999;overflow:hidden;
+}
+#myWinOverlay.show { display:block; }
+.mw-backdrop {
+  position:absolute;inset:0;
+  background:rgba(0,0,0,.93);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  animation:mwFadeIn .35s ease forwards;
+}
+@keyframes mwFadeIn{from{opacity:0;}to{opacity:1;}}
+#mwCanvas{position:absolute;inset:0;pointer-events:none;z-index:1;}
+.mw-orb{position:absolute;border-radius:50%;filter:blur(90px);pointer-events:none;}
+.mw-orb1{
+  width:340px;height:340px;
+  background:radial-gradient(circle,rgba(240,192,64,.3),transparent 70%);
+  top:-80px;left:50%;transform:translateX(-50%);
+  animation:mwOrbPulse 2.5s ease-in-out infinite alternate;
+}
+.mw-orb2{
+  width:260px;height:260px;
+  background:radial-gradient(circle,rgba(0,230,118,.2),transparent 70%);
+  bottom:-60px;left:50%;transform:translateX(-50%);
+  animation:mwOrbPulse 3s ease-in-out infinite alternate-reverse;
+}
+@keyframes mwOrbPulse{from{opacity:.5;transform:translateX(-50%) scale(1);}to{opacity:1;transform:translateX(-50%) scale(1.2);}}
+.mw-content {
+  position:absolute;inset:0;z-index:2;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:16px;overflow-y:auto;
+  animation:mwSlideUp .5s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+@keyframes mwSlideUp{from{transform:translateY(40px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.mw-ring-wrap{position:relative;width:90px;height:90px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;}
+.mw-ring{position:absolute;border-radius:50%;border:2px solid rgba(240,192,64,.4);animation:mwRingPulse 2s ease-out infinite;}
+.r1{width:90px;height:90px;animation-delay:0s;}
+.r2{width:110px;height:110px;animation-delay:.4s;border-color:rgba(240,192,64,.2);}
+.r3{width:130px;height:130px;animation-delay:.8s;border-color:rgba(240,192,64,.1);}
+@keyframes mwRingPulse{0%{transform:scale(.8);opacity:1;}100%{transform:scale(1.3);opacity:0;}}
+.mw-trophy{
+  font-size:3.2rem;z-index:1;
+  animation:mwTrophyBounce 1s ease infinite alternate;
+  filter:drop-shadow(0 0 20px rgba(240,192,64,.8));
+}
+@keyframes mwTrophyBounce{from{transform:scale(1) rotate(-5deg);}to{transform:scale(1.12) rotate(5deg);}}
+.mw-bingo-text{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:4.5rem;letter-spacing:12px;line-height:1;
+  background:linear-gradient(135deg,#ffe066,#f0c040,#00e676,#f0c040);
+  background-size:300% auto;
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  animation:mwShine 2s linear infinite;
+  filter:drop-shadow(0 0 30px rgba(240,192,64,.5));
+  margin-bottom:2px;
+}
+@keyframes mwShine{0%{background-position:0% center;}100%{background-position:300% center;}}
+.mw-sub{
+  font-size:1rem;font-weight:700;color:rgba(255,255,255,.7);
+  letter-spacing:4px;text-transform:uppercase;margin-bottom:10px;
+}
+.mw-name{
+  font-size:1.2rem;font-weight:900;color:#fff;
+  text-shadow:0 0 20px rgba(255,255,255,.3);
+  margin-bottom:2px;text-align:center;
+}
+.mw-card-info{font-size:0.75rem;color:rgba(255,255,255,.4);margin-bottom:14px;text-align:center;}
+.mw-prize-wrap{
+  position:relative;
+  background:linear-gradient(135deg,rgba(240,192,64,.12),rgba(240,192,64,.04));
+  border:1px solid rgba(240,192,64,.35);
+  border-radius:20px;padding:14px 32px;margin-bottom:14px;
+  overflow:hidden;text-align:center;
+}
+.mw-prize-label{font-size:0.58rem;letter-spacing:3px;text-transform:uppercase;color:rgba(240,192,64,.6);margin-bottom:4px;}
+.mw-prize-val{
+  font-family:'Bebas Neue',sans-serif;font-size:3.5rem;line-height:1;
+  color:#f0c040;
+  text-shadow:0 0 40px rgba(240,192,64,.8),0 0 80px rgba(240,192,64,.3);
+  animation:mwPrizePop .6s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.mw-etb{font-size:1.8rem;color:#c8960a;}
+@keyframes mwPrizePop{0%{transform:scale(0.3);opacity:0;}100%{transform:scale(1);opacity:1;}}
+.mw-prize-glow{
+  position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 50%,rgba(240,192,64,.08),transparent 70%);
+  animation:mwOrbPulse 1.5s ease-in-out infinite alternate;
+}
+.mw-board-outer{
+  width:100%;max-width:260px;
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;padding:10px;
+  margin-bottom:14px;
+}
+.mw-board-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;}
+.mw-bc{
+  background:#0d1020;border-radius:4px;
+  padding:4px 2px;text-align:center;
+  font-size:0.6rem;font-weight:700;
+  color:#3a4868;border:1px solid #1a2040;
+}
+.mw-bc.hdr{background:#f0c040;color:#06080f;font-family:'Bebas Neue',sans-serif;font-size:0.72rem;}
+.mw-bc.hit{background:#003318;color:#00e676;border-color:#005a2a;}
+.mw-bc.win{
+  background:linear-gradient(135deg,#ff2200,#ff6600)!important;
+  color:#fff!important;border:2px solid #ff4400!important;
+  font-weight:900!important;
+  box-shadow:0 0 12px rgba(255,80,0,.7)!important;
+  animation:mwWinCell .5s ease infinite alternate;
+}
+.mw-bc.free{background:#002a14;color:#00e676;border-color:#004d26;}
+@keyframes mwWinCell{from{box-shadow:0 0 8px rgba(255,80,0,.5);}to{box-shadow:0 0 20px rgba(255,80,0,1);}}
+.mw-progress-wrap{
+  width:100%;max-width:260px;height:3px;
+  background:rgba(255,255,255,.08);border-radius:3px;
+  overflow:hidden;margin-bottom:12px;
+}
+.mw-progress-fill{
+  height:100%;width:100%;
+  background:linear-gradient(90deg,#f0c040,#00e676);
+  border-radius:3px;
+  animation:mwProgress 5s linear forwards;
+}
+@keyframes mwProgress{from{width:100%;}to{width:0%;}}
+.mw-btns{display:flex;gap:10px;margin-bottom:8px;width:100%;max-width:260px;}
+.mw-btn{
+  flex:1;border:none;border-radius:14px;
+  padding:12px;font-family:'Outfit',sans-serif;
+  font-weight:700;font-size:0.82rem;cursor:pointer;
+  transition:all .15s;
+}
+.mw-btn:active{transform:scale(.95);}
+.mw-pause{
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.15)!important;
+  color:#fff;
+}
+.mw-cancel{
+  background:rgba(255,51,85,.12);
+  border:1px solid rgba(255,51,85,.4)!important;
+  color:#ff3355;
+}
+.mw-hint{font-size:0.62rem;color:rgba(255,255,255,.25);letter-spacing:1px;}
+@keyframes winBannerPulse{
+  from{box-shadow:0 0 10px rgba(255,60,0,.4);}
+  to{box-shadow:0 0 25px rgba(255,60,0,.9),0 0 50px rgba(255,60,0,.3);}
+}
+/* ── TOAST ── */
+#toast{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:#fff;color:#06080f;
+  padding:12px 24px;border-radius:16px;
+  font-weight:700;font-size:0.9rem;display:none;z-index:9999;
+  box-shadow:0 4px 26px rgba(0,0,0,.4);text-align:center;min-width:180px;
+}
+
+/* ── MODALS ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.88);z-index:500;
+  justify-content:center;align-items:center;
+}
+.modal-overlay.open{display:flex;}
+.modal-box{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r2);padding:20px;width:90%;max-width:320px;
+  animation:modalIn .28s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes modalIn{0%{transform:scale(.8);opacity:0;}100%{transform:scale(1);opacity:1;}}
+.modal-title{
+  font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:3px;
+  color:var(--gold);margin-bottom:13px;text-align:center;
+}
+.upload-zone{
+  border:2px dashed var(--border);border-radius:var(--r);
+  padding:20px;text-align:center;cursor:pointer;
+  color:var(--muted);font-size:0.8rem;margin-bottom:12px;transition:border-color .18s;
+}
+.upload-zone:hover{border-color:var(--gold);}
+.modal-btns{display:flex;gap:7px;}
+.btn-send{flex:1;background:var(--green);color:#06080f;padding:11px;border-radius:var(--r);}
+.btn-close-modal{flex:1;background:var(--red);color:#fff;padding:11px;border-radius:var(--r);}
+/* ── BALL ANIMATION ── */
+@keyframes ballThrow{
+  0%{transform:translateY(-120px) scale(0.3) rotate(-180deg);opacity:0;}
+  60%{transform:translateY(8px) scale(1.15) rotate(10deg);opacity:1;}
+  80%{transform:translateY(-4px) scale(0.95) rotate(-5deg);}
+  100%{transform:translateY(0) scale(1) rotate(0deg);opacity:1;}
+}
+@keyframes ballGlow{
+  0%,100%{box-shadow:0 0 8px rgba(240,192,64,.4);}
+  50%{box-shadow:0 0 28px rgba(240,192,64,.9),0 0 50px rgba(240,192,64,.4);}
+}
+#lastBallDisplay{
+  display:flex;align-items:center;justify-content:center;
+  margin:3px auto 2px;
+  width:58px;height:58px;border-radius:50%;
+  font-family:'Bebas Neue',sans-serif;
+  font-weight:900;line-height:1;
+  border:3px solid var(--gold);
+  background:radial-gradient(circle at 35% 35%,#fff8e1,#f0c040 60%,#b8880a);
+  color:#06080f;
+  animation:ballGlow 1.5s infinite;
+  flex-direction:column;gap:0;
+}
+#lastBallDisplay .ball-letter{font-size:0.55rem;letter-spacing:2px;opacity:.8;line-height:1;}
+#lastBallDisplay .ball-num{font-size:1.7rem;line-height:1;}
+.ball-throw{animation:ballThrow .55s cubic-bezier(.34,1.56,.64,1) forwards;}
+/* ── LOADING ── */
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes avatarRing{
+  0%{transform:rotate(0deg);opacity:.5;}
+  50%{opacity:1;}
+  100%{transform:rotate(360deg);opacity:.5;}
+}
+
+</style>
+</head>
+<body>
+<!-- ══ TUTORIAL SCREEN ══ -->
+<div id="tutorialScreen" style="
+  position:fixed;inset:0;z-index:9999999;
+  background:#06080f;
+  display:none;
+  flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:20px;
+">
+  <!-- Steps -->
+  <div id="tutSlides" style="width:100%;max-width:340px;">
+
+    <!-- Step 1 -->
+    <div class="tut-slide" style="text-align:center;">
+      <div style="font-size:3.5rem;margin-bottom:12px;">🎱</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);letter-spacing:4px;margin-bottom:8px;">ደረጃ 1</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:6px;">Card ምረጥ</div>
+      <div style="font-size:0.82rem;color:#aab4c8;line-height:1.6;">1 እስከ 100 ካሉ cards ውስጥ<br>የምትፈልገውን ምረጥ</div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="tut-slide" style="text-align:center;display:none;">
+      <div style="font-size:3.5rem;margin-bottom:12px;">✅</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);letter-spacing:4px;margin-bottom:8px;">ደረጃ 2</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:6px;">Confirm ተጫን</div>
+      <div style="font-size:0.82rem;color:#aab4c8;line-height:1.6;">Card ከመረጥክ በኋላ<br>Confirm button ተጫን</div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="tut-slide" style="text-align:center;display:none;">
+      <div style="font-size:3.5rem;margin-bottom:12px;">📢</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);letter-spacing:4px;margin-bottom:8px;">ደረጃ 3</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:6px;">Numbers ይጠራሉ</div>
+      <div style="font-size:0.82rem;color:#aab4c8;line-height:1.6;">Admin numbers ይጠራል<br>Card ላይ ካለ ✅ ይደረጋል</div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="tut-slide" style="text-align:center;display:none;">
+      <div style="font-size:3.5rem;margin-bottom:12px;">🏆</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);letter-spacing:4px;margin-bottom:8px;">ደረጃ 4</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:6px;">BINGO! አሸንፍ</div>
+      <div style="font-size:0.82rem;color:#aab4c8;line-height:1.6;">Line ሲሞላ BINGO!<br>Prize ወዲያው ይከፈላል 💰</div>
+    </div>
+
+  </div>
+
+  <!-- Dots -->
+  <div style="display:flex;gap:8px;margin-top:24px;" id="tutDots">
+    <div class="tut-dot active-dot"></div>
+    <div class="tut-dot"></div>
+    <div class="tut-dot"></div>
+    <div class="tut-dot"></div>
+  </div>
+
+  <!-- Progress bar -->
+  <div style="width:200px;height:3px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-top:16px;">
+    <div id="tutBar" style="
+      height:100%;width:0%;
+      background:linear-gradient(90deg,var(--gold),var(--green));
+      border-radius:3px;
+      transition:width 1.2s linear;
+    "></div>
+  </div>
+
+  <div style="font-size:0.65rem;color:#3a4868;margin-top:10px;">
+    ቀጥሎ splash ይከፈታል...
+  </div>
+</div>
+<!-- ══ SPLASH SCREEN ══ -->
+<div id="splashScreen" style="
+  position:fixed;inset:0;z-index:999999;
+  background:#06080f;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  overflow:hidden;
+">
+
+  <!-- Floating Balls Background -->
+  <div id="splashBalls" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;"></div>
+
+  <!-- Glow blobs -->
+  <div style="position:absolute;top:-80px;left:-80px;width:280px;height:280px;border-radius:50%;
+    background:radial-gradient(circle,rgba(240,192,64,.13),transparent 70%);pointer-events:none;"></div>
+  <div style="position:absolute;bottom:-60px;right:-60px;width:220px;height:220px;border-radius:50%;
+    background:radial-gradient(circle,rgba(0,230,118,.10),transparent 70%);pointer-events:none;"></div>
+
+  <!-- Content -->
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:0;width:100%;max-width:360px;padding:0 20px;">
+
+    <!-- Logo -->
+    <div id="splashLogo" style="
+      font-family:'Bebas Neue',sans-serif;
+      font-size:5.5rem;letter-spacing:14px;
+      background:linear-gradient(135deg,#ffe066,#f0c040,#c8960a,#f0c040);
+      background-size:200% auto;
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 0 30px rgba(240,192,64,.7));
+      animation:logoShine 2.5s linear infinite, logoIn .7s cubic-bezier(.34,1.56,.64,1) both;
+      line-height:1;margin-bottom:2px;
+    ">BINGO</div>
+<!-- Spinning Ball -->
+<div style="
+  position:relative;width:90px;height:90px;
+  margin:0 auto 10px;
+  animation:fadeUp .6s .15s both;
+">
+  <div style="
+    width:90px;height:90px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#fff8e1,#f0c040 55%,#b8880a);
+    border:4px solid #f0c040;
+    box-shadow:0 0 40px rgba(240,192,64,.6),0 0 80px rgba(240,192,64,.25);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    animation:ballSpin 3s linear infinite, ballGlow2 2s ease-in-out infinite alternate;
+    position:relative;overflow:hidden;
+  ">
+    <!-- shine -->
+    <div style="
+      position:absolute;top:8px;left:14px;
+      width:22px;height:14px;border-radius:50%;
+      background:rgba(255,255,255,.55);
+      transform:rotate(-35deg);
+    "></div>
+    <!-- stripe -->
+    <div style="
+      position:absolute;inset:0;
+      border-radius:50%;overflow:hidden;
+    ">
+      <div style="
+        position:absolute;top:50%;left:-10%;
+        width:120%;height:18px;
+        background:rgba(255,255,255,.18);
+        transform:translateY(-50%) rotate(-20deg);
+      "></div>
+    </div>
+    <span style="
+      font-family:'Bebas Neue',sans-serif;
+      font-size:0.55rem;letter-spacing:3px;
+      color:#06080f;opacity:.7;line-height:1;
+      position:relative;z-index:1;
+    ">BINGO</span>
+    <span style="
+      font-family:'Bebas Neue',sans-serif;
+      font-size:1.9rem;color:#06080f;
+      line-height:1;position:relative;z-index:1;
+    ">★</span>
+  </div>
+</div>
+    <!-- PRO badge -->
+    <div style="
+      background:linear-gradient(135deg,#1a1200,#0a0d00);
+      border:1px solid rgba(240,192,64,.5);
+      border-radius:20px;padding:3px 14px;
+      font-size:0.62rem;letter-spacing:5px;font-weight:700;
+      color:var(--gold);margin-bottom:18px;
+      animation:fadeUp .6s .3s both;
+    ">PRO EDITION</div>
+
+    <!-- Tagline -->
+    <div style="
+      text-align:center;margin-bottom:22px;
+      animation:fadeUp .6s .5s both;
+    ">
+      <div style="font-size:1.05rem;font-weight:900;color:#fff;line-height:1.4;">
+  በ <span style="color:#f0c040;">50 ብር</span> ብቻ
+</div>
+<div style="font-size:1.6rem;font-weight:900;
+  background:linear-gradient(90deg,#00e676,#00c060);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 12px rgba(0,230,118,.4));
+  line-height:1.2;">
+  እስከ <span id="prizeCounter" style="display:inline-block;animation:prizePop 1s ease-out both;">5,000</span> ብር አሸናፊ ይሁኑ!
+</div>
+    </div>
+
+    <!-- Live Players -->
+    <div style="
+      display:flex;align-items:center;gap:8px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:30px;padding:6px 16px;
+      margin-bottom:20px;
+      animation:fadeUp .6s .65s both;
+    ">
+      <span style="width:8px;height:8px;border-radius:50%;background:#00e676;
+        display:inline-block;animation:liveDot 1.2s infinite;flex-shrink:0;"></span>
+      <span style="font-size:0.78rem;color:#aab4c8;">Live Players:</span>
+      <span id="splashPlayers" style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:#f0c040;">—</span>
+    </div>
+
+    <!-- Top 3 Winners -->
+    <div style="
+      width:100%;margin-bottom:26px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(240,192,64,.15);
+      border-radius:16px;padding:12px 14px;
+      animation:fadeUp .6s .8s both;
+    ">
+      <div style="font-size:0.6rem;letter-spacing:3px;text-transform:uppercase;
+        color:#3a4868;margin-bottom:10px;text-align:center;">🏆 ታላቅ አሸናፊዎች</div>
+      <div id="splashTopWinners" style="display:flex;flex-direction:column;gap:7px;">
+        <!-- Filled by JS -->
+        <div style="text-align:center;color:#3a4868;font-size:0.78rem;">Loading...</div>
+      </div>
+    </div>
+    <!-- Pulse Rings -->
+<div style="position:relative;width:100%;margin-bottom:6px;">
+  <div style="
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:100%;height:60px;
+    border-radius:18px;
+    border:2px solid rgba(0,230,118,.4);
+    animation:ringPulse 1.8s ease-out infinite;
+    pointer-events:none;
+  "></div>
+  <div style="
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:100%;height:60px;
+    border-radius:18px;
+    border:2px solid rgba(0,230,118,.25);
+    animation:ringPulse 1.8s ease-out .6s infinite;
+    pointer-events:none;
+  "></div>
+  <div style="
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:100%;height:60px;
+    border-radius:18px;
+    border:2px solid rgba(0,230,118,.15);
+    animation:ringPulse 1.8s ease-out 1.2s infinite;
+    pointer-events:none;
+  "></div>
+</div>
+
+    <!-- PLAY BUTTON -->
+    <button id="splashPlayBtn" onclick="closeSplash()" style="
+      width:100%;
+      background:linear-gradient(135deg,#00c060,#00e676);
+      border:none;border-radius:18px;
+      padding:17px;
+      font-family:'Bebas Neue',sans-serif;
+      font-size:1.6rem;letter-spacing:6px;
+      color:#06080f;cursor:pointer;
+      box-shadow:0 0 0 0 rgba(0,230,118,.5);
+      animation:fadeUp .6s .95s both, playPulse 1.6s 1.6s infinite;
+      position:relative;overflow:hidden;
+    ">
+      ▶ ጨዋታ ጀምር
+      <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);pointer-events:none;border-radius:18px;"></div>
+    </button>
+     <!-- Live Activity Feed -->
+<div style="
+  width:100%;margin-top:14px;
+  animation:fadeUp .6s 1.05s both;
+">
+  <div id="activityFeed" style="
+    display:flex;flex-direction:column;gap:5px;
+  "></div>
+</div>
+    <div style="font-size:0.65rem;color:#3a4868;margin-top:10px;animation:fadeUp .6s 1.1s both;">
+      Card ምረጥ • Confirm • አሸንፍ 🎯
+    </div>
+     <!-- Ticker -->
+<div style="
+  width:100%;margin-top:16px;
+  background:rgba(240,192,64,.06);
+  border:1px solid rgba(240,192,64,.15);
+  border-radius:30px;padding:7px 16px;
+  overflow:hidden;
+  animation:fadeUp .6s 1.2s both;
+">
+  <div style="
+    display:flex;gap:40px;
+    animation:ticker 18s linear infinite;
+    white-space:nowrap;
+  ">
+    <span style="font-size:0.72rem;color:var(--gold);">🏆 አሸናፊዎች ዛሬ ብር ወሰዱ!</span>
+    <span style="font-size:0.72rem;color:#aab4c8;">🎱 Card ምረጥ — ጨዋታ ጀምር</span>
+    <span style="font-size:0.72rem;color:var(--green);">💰 50 ብር ብቻ ከፍለህ አሸንፍ!</span>
+    <span style="font-size:0.72rem;color:var(--gold);">🏆 አሸናፊዎች ዛሬ ብር ወሰዱ!</span>
+    <span style="font-size:0.72rem;color:#aab4c8;">🎱 Card ምረጥ — ጨዋታ ጀምር</span>
+    <span style="font-size:0.72rem;color:var(--green);">💰 50 ብር ብቻ ከፍለህ አሸንፍ!</span>
+  </div>
+</div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+window.closeSplash = function(){
+  const s = document.getElementById('splashScreen');
+  if(!s) return;
+  s.style.transition = 'opacity .4s ease';
+  s.style.opacity = '0';
+  setTimeout(()=>{ s.style.display='none'; }, 650);
+}
+window.closeWelcome = function(){
+  const ws = document.getElementById('welcomeScreen');
+  ws.style.transition = 'opacity .5s ease';
+  ws.style.opacity = '0';
+  setTimeout(()=>{ ws.style.display='none'; }, 500);
+}
+</script>
+<!-- ══ WELCOME SCREEN ══ -->
+<div id="welcomeScreen" style="
+  position:fixed;inset:0;z-index:999998;
+  background:#06080f;
+  display:none;
+  flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:24px;
+  overflow:hidden;
+">
+  <div style="position:absolute;top:-60px;left:-60px;width:250px;height:250px;border-radius:50%;
+    background:radial-gradient(circle,rgba(0,230,118,.12),transparent 70%);pointer-events:none;"></div>
+  <div style="position:absolute;bottom:-60px;right:-60px;width:200px;height:200px;border-radius:50%;
+    background:radial-gradient(circle,rgba(240,192,64,.10),transparent 70%);pointer-events:none;"></div>
+
+  <div style="position:relative;z-index:2;width:100%;max-width:320px;text-align:center;">
+    <div style="
+      width:100px;height:100px;border-radius:50%;margin:0 auto 20px;
+      background:linear-gradient(135deg,#001a0e,#002a18);
+      border:3px solid rgba(0,230,118,.6);
+      display:flex;align-items:center;justify-content:center;
+      font-size:3.2rem;
+      box-shadow:0 0 50px rgba(0,230,118,.3),0 0 100px rgba(0,230,118,.1);
+      animation:welcomeFloat 2.5s ease-in-out infinite alternate;
+    ">🎁</div>
+
+    <div style="
+      font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:7px;
+      background:linear-gradient(135deg,#ffe066,#f0c040,#c8960a);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 0 24px rgba(240,192,64,.5));
+      line-height:1;margin-bottom:6px;
+      animation:fadeUp .5s .1s both;
+    ">እንኳን ደህና</div>
+
+    <div style="
+      font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:7px;
+      background:linear-gradient(135deg,#ffe066,#f0c040,#c8960a);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 0 24px rgba(240,192,64,.5));
+      line-height:1;margin-bottom:20px;
+      animation:fadeUp .5s .2s both;
+    ">መጣህ! 👋</div>
+
+    <div style="
+      font-size:0.92rem;color:#aab4c8;line-height:1.8;margin-bottom:22px;
+      animation:fadeUp .5s .3s both;
+    ">
+      <b style="color:#fff;font-size:1rem;">Bingo Pro</b> ላይ እንኳን ደህና መጣህ!<br>
+      ለእርስዎ <span style="color:#00e676;font-weight:900;font-size:1.05rem;">ነፃ 20 ብር ቦነስ</span> ተሰጥቷል 🎉
+    </div>
+
+    <!-- Bonus Box -->
+    <div style="
+      background:linear-gradient(135deg,#001408,#002a18);
+      border:2px solid rgba(0,230,118,.5);
+      border-radius:20px;padding:20px 16px;margin-bottom:20px;
+      position:relative;overflow:hidden;
+      animation:fadeUp .5s .4s both;
+      box-shadow:0 0 40px rgba(0,230,118,.15),inset 0 1px 0 rgba(255,255,255,.05);
+    ">
+      <div style="position:absolute;top:-30px;right:-30px;width:100px;height:100px;border-radius:50%;
+        background:radial-gradient(circle,rgba(0,230,118,.2),transparent 70%);pointer-events:none;"></div>
+      <div style="position:absolute;bottom:-20px;left:-20px;width:80px;height:80px;border-radius:50%;
+        background:radial-gradient(circle,rgba(240,192,64,.1),transparent 70%);pointer-events:none;"></div>
+
+      <div style="font-size:0.6rem;letter-spacing:4px;text-transform:uppercase;
+        color:#00c060;margin-bottom:10px;font-weight:700;">
+        🎁 የእንኳን ደህና ስጦታ
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px;">
+        <div style="
+          font-family:'Bebas Neue',sans-serif;font-size:5rem;color:#00e676;line-height:1;
+          text-shadow:0 0 40px rgba(0,230,118,.7),0 0 80px rgba(0,230,118,.3);
+          position:relative;z-index:1;
+        ">20</div>
+        <div style="text-align:left;">
+          <div style="font-size:1.3rem;font-weight:900;color:#00e676;line-height:1;">ብር</div>
+          <div style="font-size:0.75rem;color:#4a8a6a;line-height:1.4;">ነፃ ቦነስ</div>
+        </div>
+      </div>
+
+      <div style="
+        background:rgba(0,230,118,.08);border-radius:10px;padding:8px 12px;
+        font-size:0.72rem;color:#4a8a6a;line-height:1.6;
+      ">
+        ✅ Account ላይ ታክሏል &nbsp;|&nbsp; Card ምረጥ — አሁን ጀምር!
+      </div>
+    </div>
+
+    <!-- Good luck -->
+    <div style="
+      background:linear-gradient(135deg,rgba(240,192,64,.08),rgba(240,192,64,.04));
+      border:1px solid rgba(240,192,64,.25);
+      border-radius:16px;padding:14px 18px;margin-bottom:26px;
+      animation:fadeUp .5s .5s both;
+    ">
+      <div style="font-size:1.05rem;color:var(--gold);font-weight:800;margin-bottom:3px;">
+        ⭐ መልካም ዕድል እንመኝልሃለን!
+      </div>
+      <div style="font-size:0.75rem;color:#5a6888;">
+        አሸናፊ ትሆናለህ — ጨዋታ ጀምር 🏆
+      </div>
+    </div>
+
+    <!-- Button -->
+    <button onclick="closeWelcome()" style="
+      width:100%;
+      background:linear-gradient(135deg,#00b856,#00e676);
+      border:none;border-radius:18px;padding:18px;
+      font-family:'Bebas Neue',sans-serif;font-size:1.6rem;
+      letter-spacing:6px;color:#06080f;cursor:pointer;
+      box-shadow:0 0 30px rgba(0,230,118,.45),0 8px 24px rgba(0,0,0,.3);
+      animation:fadeUp .5s .6s both, playPulse 1.6s 1.2s infinite;
+      position:relative;overflow:hidden;
+    ">
+      ▶ ቀጥል
+      <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.2),transparent);
+        pointer-events:none;border-radius:18px;"></div>
+    </button>
+
+    <div style="font-size:0.62rem;color:#2a3858;margin-top:12px;animation:fadeUp .5s .7s both;">
+      ቦነሱ account ላይ ተጨምሯል ✓
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes welcomeFloat{
+  from{transform:translateY(0) scale(1);}
+  to{transform:translateY(-12px) scale(1.06);}
+}
+@keyframes fadeIn{
+  from{opacity:0;} to{opacity:1;}
+}
+</style>
+
+<!-- LOADING SCREEN -->
+<div id="loadingScreen" style="position:fixed;inset:0;z-index:99999;background:#08090f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:8px;color:#f5c842;text-shadow:0 0 30px #f5c84266;">BINGO</div>
+  <div style="width:48px;height:48px;border:4px solid #1f2535;border-top-color:#f5c842;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+  <div style="font-size:0.8rem;color:#4a5a7a;letter-spacing:2px;">Loading...</div>
+</div>
+
+<!-- SELECT SCREEN -->
+<div id="selectScreen" class="screen active">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="logo">BINGO</div>
+      <div id="lastBallDisplay" style="display:none;
+        width:32px;height:32px;border-radius:50%;
+        flex-direction:column;align-items:center;justify-content:center;
+        font-family:'Bebas Neue',sans-serif;font-weight:900;
+        border:2px solid var(--gold);
+        background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.3),#f0c040 60%,#b8880a);
+        color:#06080f;flex-shrink:0;">
+        <span class="ball-letter" id="ballLetter" style="font-size:0.35rem;letter-spacing:1px;opacity:.8;line-height:1;">B</span>
+        <span class="ball-num" id="ballNum" style="font-size:0.9rem;line-height:1;">0</span>
+      </div>
+      <button id="soundToggle" onclick="toggleSound()" style="
+        background:var(--card);border:1px solid var(--border);
+        border-radius:20px;padding:4px 10px;
+        font-size:0.7rem;font-weight:700;color:var(--green);
+        cursor:pointer;font-family:'Outfit',sans-serif;">🔊 ON</button>
+      <div id="topCdBadge" style="display:none;background:#001a20;border:1px solid #00e5ff;border-radius:20px;padding:3px 8px;align-items:center;gap:3px;">
+        <span style="font-size:0.65rem;">⏱</span>
+        <span style="color:#00e5ff;font-family:'Bebas Neue',sans-serif;font-size:0.85rem;letter-spacing:1px;" id="topCdVal">--:--</span>
+      </div>
+    </div>
+    <div class="info-badges">
+      <div class="badge">👥<span class="val" id="topPlayers">0</span></div>
+      <div class="badge">🎟<span class="val" id="topCards">0</span></div>
+      <div class="badge">🏆<span class="val" id="topPrize">0</span></div>
+    </div>
+    <button id="liveBtn" onclick="goLive()">🔴 LIVE</button>
+  </div>
+
+  <!-- COUNTDOWN BAR -->
+ <div id="countdownBar">
+    <div>
+      <div class="cd-bar-label">⏱ Game ሲጀምር</div>
+      <div class="cd-bar-val" id="cdBarVal">--:--</div>
+      <div class="cd-bar-sub">Card ምረጥ — game auto ይጀምራል</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:2px;">💰 ቀሪ ሂሳብ</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2.2rem;color:var(--gold);line-height:1;text-shadow:0 0 20px rgba(240,192,64,.7),0 0 40px rgba(240,192,64,.3);letter-spacing:2px;">
+        <span id="cdBalance">0</span><span style="font-size:1rem;color:var(--gold2);">ብር</span>
+      </div>
+    </div>
+    <div class="cd-pulse"></div>
+</div>
+
+  <!-- BET + PREVIEW ROW -->
+  <div id="betPreviewRow" style="display:flex;gap:6px;margin:6px 10px;align-items:stretch;min-height:110px;">
+
+    <!-- BET + PRIZE -->
+    <div style="
+  flex:1;
+  background:linear-gradient(145deg,#0d1018,#090c16);
+  border:1px solid rgba(240,192,64,.28);
+  border-radius:18px;padding:12px 16px;
+  display:flex;flex-direction:column;justify-content:space-between;
+  position:relative;overflow:hidden;
+  box-shadow:0 0 30px rgba(240,192,64,.06),inset 0 1px 0 rgba(255,255,255,.04);
+">
+  <div style="position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,rgba(240,192,64,.6),transparent);
+    border-radius:18px 18px 0 0;"></div>
+      <div>
+        <div style="font-size:0.5rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:2px;">መደብ</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:var(--gold);
+          text-shadow:0 0 14px rgba(240,192,64,.4);line-height:1;">
+          <span id="betShow">0</span> <span style="font-size:0.9rem;color:var(--gold2);">ብር</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:0.5rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:2px;">ደራሽ</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:var(--green);
+          text-shadow:0 0 14px rgba(0,230,118,.4);line-height:1;">
+          <span id="prizeShow">0</span> <span style="font-size:0.9rem;color:#00a854;">ብር</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD PREVIEW -->
+    <div id="cardPreviewPanel" style="
+      width:51%;margin:0;flex-shrink:0;
+      background:linear-gradient(135deg,#080e00,#001008);
+      border:1.5px solid rgba(240,192,64,.3);
+      border-radius:14px;padding:5px 7px;
+      position:relative;display:flex;flex-direction:column;justify-content:center;
+    ">
+      <div style="position:absolute;top:0;left:0;right:0;height:1px;
+        background:linear-gradient(90deg,transparent,rgba(0,230,118,.4),transparent);"></div>
+      <div class="preview-header">
+        <div class="preview-title" id="previewTitle">CARD #0</div>
+      </div>
+      <div class="preview-grid" id="previewGrid"></div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend-row" style="
+  margin:0 10px 4px;
+  background:rgba(255,255,255,.02);
+  border:1px solid rgba(255,255,255,.05);
+  border-radius:14px;
+  padding:6px 14px;
+  display:flex;align-items:center;gap:10px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+">
+    <div class="legend-item"><span class="legend-dot taken-dot"></span>ተይዟል</div>
+    <div class="legend-item"><span class="legend-dot mine-dot"></span>የኔ</div>
+    <div class="count-row" style="margin-left:auto;font-size:0.6rem;">
+      ተይዟል: <b style="color:var(--red)" id="takenCount">0</b>
+      &nbsp;ነጻ: <b style="color:var(--green)" id="freeCount">100</b>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD PANEL -->
+  <div id="leaderboardPanel">
+    <div class="lb-header">
+      <div class="lb-title">🏆 WINNER HISTORY</div>
+      <div class="lb-called-badge">📢 Called: <span class="lbc-num" id="lbCalledCount">0</span></div>
+    </div>
+    <div id="lbList"></div>
+  </div>
+
+  <!-- CARDS GRID -->
+  <div class="cards-section" id="cardSelectSection" style="
+  flex:1;overflow-y:auto;padding:4px 10px 90px;min-height:0;max-height:100%;
+">
+  <h3>Card ምረጥ (1–100)</h3>
+  <div class="cards-grid" id="cardsGrid"></div>
+</div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottomBar">
+    <button id="confirmBtn" onclick="confirmCard()">
+      ✔ Confirm Card
+      <span class="sel-badge" id="selectedCountBadge" style="display:none"></span>
+    </button>
+    <button id="accountBtn" onclick="showScreen('accountScreen')">
+      <span class="acc-icon">👤</span>
+<span class="acc-label">Account</span>
+<span id="notifBadge" style="display:none;position:absolute;top:4px;right:4px;
+  background:var(--red);color:#fff;border-radius:50%;
+  width:14px;height:14px;font-size:0.45rem;font-weight:900;
+  display:none;align-items:center;justify-content:center;">0</span>
+    </button>
+  </div>
+
+</div>
+
+<!-- GAME SCREEN -->
+<div id="gameScreen" class="screen">
+
+  <!-- TOPBAR -->
+  <div class="topbar" style="padding:6px 10px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="logo" style="font-size:1.2rem;letter-spacing:3px;">BINGO</div>
+      <div id="gameBallDisplay" style="display:none;
+        width:34px;height:34px;border-radius:50%;
+        flex-direction:column;align-items:center;justify-content:center;
+        font-family:'Bebas Neue',sans-serif;font-weight:900;
+        border:2px solid var(--gold);
+        background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.3),#f0c040 60%,#b8880a);
+        color:#06080f;flex-shrink:0;box-shadow:0 0 16px rgba(240,192,64,.4);">
+        <span id="gameBallLetter" style="font-size:0.35rem;letter-spacing:1px;opacity:.8;line-height:1;">B</span>
+        <span id="lcNum" style="font-size:1rem;line-height:1;">—</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:5px;align-items:center;">
+      <div style="background:linear-gradient(135deg,#1a0e00,#0d0900);border:1px solid rgba(240,192,64,.3);border-radius:20px;padding:4px 10px;display:flex;align-items:center;gap:4px;">
+        <div style="font-size:0.5rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:2px;">ደራሽ</div>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;color:var(--gold);" id="betGame">0</span>
+      </div>
+      <div style="background:linear-gradient(135deg,#001a0e,#000d07);border:1px solid rgba(0,230,118,.3);border-radius:20px;padding:4px 10px;display:flex;align-items:center;gap:4px;">
+        <span style="font-size:0.6rem;color:var(--muted);">🏆</span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;color:var(--green);" id="prizeGame">0</span>
+      </div>
+    </div>
+    <button style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:var(--muted);padding:6px 10px;border-radius:10px;font-size:0.7rem;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;" onclick="showScreen('selectScreen')">⬅</button>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div style="display:flex;height:calc(100vh - 52px);overflow:hidden;">
+
+    <!-- LEFT PANEL: TV + MY CARD -->
+    <div style="width:58%;display:flex;flex-direction:column;padding:2px 4px 5px 7px;gap:4px;overflow:hidden;">
+
+      <!-- TV BOARD -->
+      <div style="
+        background:linear-gradient(135deg,#08090f,#0d0f1e);
+        border:1px solid rgba(240,192,64,.2);
+        border-radius:12px;padding:6px;flex-shrink:0;
+        box-shadow:0 0 20px rgba(240,192,64,.05),inset 0 1px 0 rgba(255,255,255,.04);
+        position:relative;overflow:hidden;
+      ">
+        <!-- Top glow line -->
+        <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(240,192,64,.4),transparent);"></div>
+
+        <div style="font-size:0.48rem;letter-spacing:3px;text-transform:uppercase;color:rgba(240,192,64,.5);text-align:center;margin-bottom:4px;">📺 BINGO BOARD</div>
+
+        <div class="tv-grid" id="tvGrid" style="gap:1.5px;"></div>
+      </div>
+
+      <!-- MY CARD -->
+      <div style="flex:1;overflow-y:auto;min-height:0;">
+        <div style="
+          font-size:0.5rem;letter-spacing:3px;text-transform:uppercase;
+          color:var(--green);margin-bottom:4px;
+          display:flex;align-items:center;gap:5px;padding:0 2px;
+        ">
+          <span style="width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;animation:liveDot 1s infinite;"></span>
+          ✅ የኔ ካርድ
+        </div>
+        <div id="myGameCard"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: LEADERBOARD -->
+    <div style="
+      width:42%;
+      border-left:1px solid rgba(255,255,255,.05);
+      display:flex;flex-direction:column;
+      background:linear-gradient(180deg,rgba(8,9,15,.8),rgba(6,8,15,.95));
+      overflow:hidden;
+    ">
+
+      <!-- LB Header -->
+      <div style="
+        padding:6px 8px;flex-shrink:0;
+        border-bottom:1px solid rgba(255,255,255,.05);
+        background:rgba(255,255,255,.02);
+      ">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:0.78rem;letter-spacing:2px;color:var(--gold);">🏆 ደረጃ</div>
+          <div style="
+            background:rgba(255,51,85,.1);border:1px solid rgba(255,51,85,.3);
+            border-radius:20px;padding:2px 7px;
+            display:flex;align-items:center;gap:3px;
+          ">
+            <span style="width:5px;height:5px;border-radius:50%;background:var(--red);display:inline-block;animation:liveDot 1s infinite;"></span>
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:0.72rem;color:var(--red);" id="gameLbCalledCount">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- LB List -->
+      <div id="gameLbList" style="overflow-y:scroll;flex:1;padding:4px;"></div>
+    </div>
+
+  </div>
+
+  <!-- BACK BTN -->
+  <button class="btn back-btn" onclick="showScreen('selectScreen')" style="
+    position:fixed;bottom:8px;right:10px;z-index:100;
+    background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.08);
+    color:rgba(255,255,255,.4);
+    padding:8px 14px;border-radius:10px;
+    font-size:0.7rem;font-weight:700;
+  ">⬅ Back</button>
+</div>
+
+<!-- ACCOUNT SCREEN -->
+<div id="accountScreen" class="screen">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="logo">BINGO</div>
+    </div>
+    <div class="info-badges">
+      <div class="badge">👥<span class="val" id="accTopPlayers">0</span></div>
+      <div class="badge">🎟<span class="val" id="accTopCards">0</span></div>
+      <div class="badge">🏆<span class="val" id="accTopPrize">0</span></div>
+    </div>
+  </div>
+  <!-- BACK BUTTON ከታች -->
+<div style="
+  position:fixed;bottom:0;left:0;right:0;
+  background:linear-gradient(180deg,transparent,rgba(6,8,15,.98));
+  padding:12px 16px 24px;
+  z-index:100;
+">
+  <button onclick="showScreen('selectScreen')" style="
+    width:100%;
+    background:linear-gradient(135deg,#1a1f35,#0d1020);
+    border:1.5px solid rgba(255,255,255,.1);
+    border-radius:16px;padding:14px;
+    font-family:'Bebas Neue',sans-serif;
+    font-size:1.2rem;letter-spacing:4px;
+    color:#aab4c8;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  ">⬅ BACK</button>
+</div>
+  <!-- FLOATING BALLS -->
+  <div id="accBalls" style="position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0;"></div>
+
+  <!-- GLOW -->
+  <div style="position:fixed;top:-80px;right:-60px;width:260px;height:260px;border-radius:50%;
+    background:radial-gradient(circle,rgba(240,192,64,.15),transparent 70%);
+    pointer-events:none;z-index:0;"></div>
+  <div style="position:fixed;bottom:80px;left:-60px;width:200px;height:200px;border-radius:50%;
+    background:radial-gradient(circle,rgba(0,230,118,.10),transparent 70%);
+    pointer-events:none;z-index:0;"></div>
+
+  <!-- CONTENT -->
+  <div style="position:relative;z-index:1;padding:14px 14px 90px;">
+
+    <!-- HERO BALANCE -->
+<div style="
+  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;
+  background:linear-gradient(135deg,rgba(0,212,255,.06),rgba(61,127,255,.04));
+  border:1px solid rgba(0,212,255,.18);
+  border-radius:18px;
+  margin-bottom:12px;
+  position:relative;overflow:hidden;
+">
+  <div style="position:absolute;top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,#00d4ff,transparent);"></div>
+
+  <!-- Avatar -->
+  <div style="
+    width:48px;height:48px;border-radius:50%;flex-shrink:0;
+    background:linear-gradient(135deg,#0a1a2e,#0d2040);
+    border:2px solid rgba(0,212,255,.35);
+    display:flex;align-items:center;justify-content:center;font-size:1.3rem;
+    box-shadow:0 0 18px rgba(0,212,255,.2);
+  ">👤</div>
+
+  <!-- Info -->
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:0.6rem;color:#3a4868;letter-spacing:2px;margin-bottom:1px;">USER</div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:2px;color:#fff;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="userIdShow">—</div>
+  </div>
+
+  <!-- Balance -->
+  <div style="text-align:right;flex-shrink:0;">
+    <div style="font-size:0.52rem;color:#3a4868;letter-spacing:2px;text-transform:uppercase;">BALANCE</div>
+    <div>
+      <span style="
+        font-family:'Bebas Neue',sans-serif;font-size:2.2rem;line-height:1;
+        color:#00d4ff;text-shadow:0 0 18px rgba(0,212,255,.5);
+      " id="balanceVal">0</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;color:#0088aa;margin-left:2px;">ብር</span>
+    </div>
+  </div>
+</div>
+
+    <!-- DEPOSIT TITLE -->
+<div style="
+  font-size:0.58rem;letter-spacing:3px;text-transform:uppercase;
+  color:#00d4ff;margin-bottom:8px;padding-left:2px;
+  display:flex;align-items:center;gap:6px;
+">
+  💳 ገንዘብ ማስገባት
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(0,212,255,.25),transparent);"></div>
+</div>
+
+    <div id="depositGrid" style="
+      display:grid;grid-template-columns:repeat(3,1fr);
+      gap:8px;margin-bottom:14px;
+    "></div>
+
+    <!-- WITHDRAW -->
+<div onclick="window.openWithdraw()" style="
+  width:100%;margin-bottom:14px;
+  background:linear-gradient(135deg,#001828,#002040);
+  border:1.5px solid rgba(0,212,255,.3);
+  border-radius:14px;padding:12px 16px;
+  display:flex;align-items:center;gap:12px;
+  position:relative;overflow:hidden;cursor:pointer;
+  transition:all .15s;
+">
+  <div style="position:absolute;top:0;left:0;right:0;height:1.5px;
+    background:linear-gradient(90deg,transparent,#00d4ff,transparent);"></div>
+  <div style="
+    width:40px;height:40px;border-radius:12px;flex-shrink:0;
+    background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.2);
+    display:flex;align-items:center;justify-content:center;font-size:1.1rem;
+  ">🏧</div>
+  <div style="flex:1;">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;
+      color:#00d4ff;text-shadow:0 0 10px rgba(0,212,255,.35);">ገንዘብ ማውጣት</div>
+    <div style="font-size:0.58rem;color:#1a4a5a;margin-top:1px;">Instant withdrawal</div>
+  </div>
+  <div style="
+    width:32px;height:32px;border-radius:10px;
+    background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.2);
+    display:flex;align-items:center;justify-content:center;
+    color:#00d4ff;font-size:1rem;
+  ">→</div>
+</div>
+
+    <!-- MENU -->
+<div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:4px;
+  color:#00d4ff;text-shadow:0 0 14px rgba(0,212,255,.3);
+  margin-bottom:8px;padding-left:2px;display:flex;align-items:center;gap:8px;">
+  ⚡ QUICK MENU
+  <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(0,212,255,.2),transparent);"></div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:7px;">
+
+  <!-- My Cards -->
+  <div onclick="showScreen('myCardsScreen')" style="
+    background:linear-gradient(145deg,#0a0e1a,#080c18);
+    border:1px solid rgba(61,127,255,.15);border-left:3px solid #3d7fff;
+    border-radius:14px;padding:11px 14px;
+    display:flex;align-items:center;gap:10px;cursor:pointer;
+  ">
+    <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
+      background:rgba(61,127,255,.08);border:1px solid rgba(61,127,255,.15);
+      display:flex;align-items:center;justify-content:center;font-size:1rem;">🎟</div>
+    <div style="flex:1;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;
+        color:#3d7fff;">MY CARDS</div>
+      <div style="font-size:0.58rem;color:#2a3858;margin-top:1px;">View confirmed cards</div>
+    </div>
+    <div style="color:#2a3858;font-size:1rem;">›</div>
+  </div>
+
+  <!-- Win History -->
+  <div onclick="showScreen('winHistoryScreen');loadWinHistory();" style="
+    background:linear-gradient(145deg,#0a0e1a,#080c18);
+    border:1px solid rgba(0,212,255,.15);border-left:3px solid #00d4ff;
+    border-radius:14px;padding:11px 14px;
+    display:flex;align-items:center;gap:10px;cursor:pointer;
+  ">
+    <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
+      background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.15);
+      display:flex;align-items:center;justify-content:center;font-size:1rem;">🏆</div>
+    <div style="flex:1;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;
+        color:#00d4ff;">የኔ አሸናፊ ታሪክ</div>
+      <div style="font-size:0.58rem;color:#1a3a4a;margin-top:1px;">ስንት ጊዜ አሸነፍኩ — ስንት ብር</div>
+    </div>
+    <div style="color:#1a3a4a;font-size:1rem;">›</div>
+  </div>
+
+  <!-- Round History -->
+  <div onclick="showScreen('historyScreen');loadHistory();" style="
+    background:linear-gradient(145deg,#0a0e1a,#080c18);
+    border:1px solid rgba(155,77,255,.15);border-left:3px solid #9b4dff;
+    border-radius:14px;padding:11px 14px;
+    display:flex;align-items:center;gap:10px;cursor:pointer;
+  ">
+    <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
+      background:rgba(155,77,255,.08);border:1px solid rgba(155,77,255,.15);
+      display:flex;align-items:center;justify-content:center;font-size:1rem;">📜</div>
+    <div style="flex:1;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;
+        color:#9b4dff;">ROUND HISTORY</div>
+      <div style="font-size:0.58rem;color:#2a1a4a;margin-top:1px;">ያለፉ rounds አሸናፊዎች</div>
+    </div>
+    <div style="color:#2a1a4a;font-size:1rem;">›</div>
+     </div>
+<!-- Notifications -->
+  <div onclick="showScreen('notifScreen');loadNotifications();" style="
+    background:linear-gradient(145deg,#0a0e1a,#080c18);
+    border:1px solid rgba(255,51,85,.15);border-left:3px solid var(--red);
+    border-radius:14px;padding:11px 14px;
+    display:flex;align-items:center;gap:10px;cursor:pointer;position:relative;
+  ">
+    <div style="width:36px;height:36px;border-radius:10px;flex-shrink:0;
+      background:rgba(255,51,85,.08);border:1px solid rgba(255,51,85,.15);
+      display:flex;align-items:center;justify-content:center;font-size:1rem;">🔔</div>
+    <div style="flex:1;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:2px;
+        color:var(--red);">NOTIFICATIONS</div>
+      <div style="font-size:0.58rem;color:#3a1a1a;margin-top:1px;">ማሳወቂያዎች</div>
+    </div>
+    <span id="notifBadge" style="display:none;
+      background:var(--red);color:#fff;border-radius:50%;
+      width:18px;height:18px;font-size:0.55rem;font-weight:900;
+      align-items:center;justify-content:center;">0</span>
+    <div style="color:#3a1a1a;font-size:1rem;">›</div>
+  </div>
+
+</div>
+  </div>
+</div>
+
+
+
+
+<!-- MY CARDS SCREEN -->
+<div id="myCardsScreen" class="screen">
+  <div style="padding:12px 14px 10px;display:flex;align-items:center;gap:10px;">
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);
+      padding:8px 14px;font-size:0.8rem;color:var(--muted);"
+      onclick="showScreen('accountScreen')">⬅ Back</button>
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;
+      letter-spacing:3px;color:var(--cyan);">MY CARDS</span>
+  </div>
+  <div id="myCardsList" style="padding:0 14px 80px;"></div>
+</div>
+<!-- NOTIFICATIONS SCREEN -->
+<div id="notifScreen" class="screen">
+  <div style="padding:12px 14px 10px;display:flex;align-items:center;gap:10px;">
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);
+      padding:8px 14px;font-size:0.8rem;color:var(--muted);"
+      onclick="showScreen('accountScreen');autoMarkAllRead();">⬅ Back</button>
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;
+      letter-spacing:3px;color:var(--red);">🔔 NOTIFICATIONS</span>
+  </div>
+  <div id="notifList" style="
+    padding:10px 14px 80px;
+    display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;
+  "></div>
+  <div id="notifEmpty" style="display:none;text-align:center;padding:40px 20px;color:var(--muted);font-size:0.8rem;">
+    📭 ምንም ማሳወቂያ የለም
+  </div>
+</div>
+<!-- WIN HISTORY SCREEN -->
+<div id="winHistoryScreen" class="screen">
+  <div style="padding:14px;display:flex;align-items:center;gap:10px;">
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);padding:8px 14px;font-size:0.8rem;color:var(--muted);" onclick="showScreen('accountScreen')">⬅ Back</button>
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:3px;color:var(--gold);">የኔ አሸናፊ ታሪክ</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 14px 14px;">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);" id="whTotalWins">0</div>
+      <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;">አሸናፊ ጊዜ</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--green);" id="whTotalPrize">0</div>
+      <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;">ብር ድምር</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--cyan);" id="whBestWin">0</div>
+      <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;">ምርጥ አሸናፊ</div>
+    </div>
+  </div>
+  <div style="padding:0 14px 80px;" id="winHistoryList"></div>
+</div>
+
+<!-- ROUND HISTORY SCREEN -->
+<div id="historyScreen" class="screen">
+  <div style="padding:14px;display:flex;align-items:center;gap:10px;">
+    <button class="btn" style="background:var(--card);border:1px solid var(--border);padding:8px 14px;font-size:0.8rem;color:var(--muted);" onclick="showScreen('accountScreen')">⬅ Back</button>
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:3px;color:var(--gold);">ROUND HISTORY</span>
+  </div>
+  <div style="padding:0 14px 80px;" id="historyList"></div>
+</div>
+
+<!-- WINNER OVERLAY -->
+<div id="winnerOverlay">
+  <div class="confetti-wrap" id="confettiWrap"></div>
+
+  <!-- Glow orbs -->
+  <div style="position:absolute;width:300px;height:300px;border-radius:50%;
+    background:radial-gradient(circle,rgba(240,192,64,.2),transparent 70%);
+    top:-80px;left:50%;transform:translateX(-50%);
+    filter:blur(60px);pointer-events:none;animation:mwOrbPulse 2.5s ease-in-out infinite alternate;"></div>
+  <div style="position:absolute;width:220px;height:220px;border-radius:50%;
+    background:radial-gradient(circle,rgba(0,230,118,.15),transparent 70%);
+    bottom:-60px;left:50%;transform:translateX(-50%);
+    filter:blur(60px);pointer-events:none;animation:mwOrbPulse 3s ease-in-out infinite alternate-reverse;"></div>
+
+  <div class="winner-popup">
+    <!-- Top line -->
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,transparent,#f0c040,#00e676,#f0c040,transparent);
+      border-radius:22px 22px 0 0;"></div>
+
+    <!-- Trophy rings -->
+    <div style="position:relative;width:80px;height:80px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;">
+      <div style="position:absolute;width:80px;height:80px;border-radius:50%;
+        border:2px solid rgba(240,192,64,.4);animation:mwRingPulse 2s ease-out infinite;"></div>
+      <div style="position:absolute;width:100px;height:100px;border-radius:50%;
+        border:2px solid rgba(240,192,64,.2);animation:mwRingPulse 2s ease-out .4s infinite;"></div>
+      <span class="trophy" style="position:relative;z-index:1;">🏆</span>
+    </div>
+
+    <h1>BINGO!</h1>
+
+    <div style="
+      display:inline-block;
+      background:linear-gradient(135deg,rgba(255,51,85,.1),rgba(255,51,85,.05));
+      border:1px solid rgba(255,51,85,.3);
+      border-radius:20px;padding:3px 14px;
+      font-size:0.65rem;font-weight:700;letter-spacing:3px;
+      color:var(--red);text-transform:uppercase;margin-bottom:10px;
+    ">አሸናፊ ተገኘ!</div>
+
+    <div class="winner-name" id="winnerNameDisplay">—</div>
+    <div class="winner-card-info" id="winnerCardDisplay" style="
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;padding:6px 12px;margin-bottom:10px;
+      font-size:0.78rem;color:rgba(255,255,255,.5);
+      white-space:pre-line;line-height:1.7;
+    ">—</div>
+
+    <!-- Prize -->
+    <div style="
+      position:relative;
+      background:linear-gradient(135deg,rgba(0,230,118,.1),rgba(0,230,118,.04));
+      border:1px solid rgba(0,230,118,.3);
+      border-radius:18px;padding:12px 28px;margin-bottom:12px;
+      overflow:hidden;
+    ">
+      <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(0,230,118,.06),transparent 70%);animation:mwOrbPulse 1.5s ease-in-out infinite alternate;"></div>
+      <div style="font-size:0.55rem;letter-spacing:3px;text-transform:uppercase;color:rgba(0,230,118,.5);margin-bottom:3px;">🏆 Prize</div>
+      <div class="prize-display" id="winnerPrizeDisplay" style="
+        font-family:'Bebas Neue',sans-serif;font-size:3rem;color:var(--green);line-height:1;
+        text-shadow:0 0 40px rgba(0,230,118,.7),0 0 80px rgba(0,230,118,.3);
+      ">0</div>
+      <div style="font-size:0.7rem;color:rgba(0,230,118,.5);letter-spacing:2px;">ብር ተሸለሙ!</div>
+    </div>
+
+    <!-- Winner Board -->
+    <div id="winnerBoardWrap" style="margin:0 0 10px;overflow-x:auto;width:100%;"></div>
+
+    <!-- Progress bar -->
+    <div class="countdown-bar" style="margin-bottom:10px;">
+      <div class="fill" id="cdFill"></div>
+    </div>
+
+    <!-- Buttons -->
+    <div style="display:flex;gap:8px;justify-content:center;">
+      <button id="pauseWinBtn" style="
+        background:rgba(255,255,255,.06);
+        border:1px solid rgba(255,255,255,.15);
+        color:#fff;border-radius:12px;padding:9px 22px;
+        font-family:'Outfit',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;
+        transition:all .15s;
+      " onclick="const f=document.getElementById('cdFill');if(!f)return;const p=f.style.animationPlayState==='paused';f.style.animationPlayState=p?'running':'paused';if(p){window._winTimer=setTimeout(()=>{const o=document.getElementById('winnerOverlay');o.classList.remove('show');o.style.display='none';document.getElementById('confettiWrap').innerHTML='';},5500);}else{if(window._winTimer)clearTimeout(window._winTimer);}this.textContent=p?'⏸ Pause':'▶ Resume';">⏸ Pause</button>
+
+      <button id="closeWinBtn" style="
+        background:rgba(255,51,85,.1);
+        border:1px solid rgba(255,51,85,.35);
+        color:var(--red);border-radius:12px;padding:9px 22px;
+        font-family:'Outfit',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;
+        transition:all .15s;
+      " onclick="if(window._winTimer)clearTimeout(window._winTimer);const o=document.getElementById('winnerOverlay');o.classList.remove('show');o.style.display='none';document.getElementById('confettiWrap').innerHTML='';">✕ Close</button>
+    </div>
+
+    <div class="close-hint" style="margin-top:8px;font-size:0.6rem;color:rgba(255,255,255,.2);letter-spacing:1px;">5 ሰኮንድ ቆይቶ ይዘጋል...</div>
+  </div>
+</div>
+<!-- MY WINNER POPUP -->
+<div id="myWinOverlay">
+  <div class="mw-backdrop"></div>
+  <canvas id="mwCanvas"></canvas>
+  <div class="mw-orb mw-orb1"></div>
+  <div class="mw-orb mw-orb2"></div>
+  <div class="mw-content">
+    <div class="mw-ring-wrap">
+      <div class="mw-ring r1"></div>
+      <div class="mw-ring r2"></div>
+      <div class="mw-ring r3"></div>
+      <div class="mw-trophy">🏆</div>
+    </div>
+    <div class="mw-bingo-text">BINGO!</div>
+    <div class="mw-sub">አሸነፍህ!</div>
+    <div class="mw-name" id="mwName">—</div>
+    <div class="mw-card-info" id="mwCardInfo">—</div>
+    <div class="mw-prize-wrap">
+      <div class="mw-prize-label">የተሸለምህ</div>
+      <div class="mw-prize-val"><span id="mwPrize">0</span> <span class="mw-etb">ብር</span></div>
+      <div class="mw-prize-glow"></div>
+    </div>
+    <div id="mwBoardWrap" class="mw-board-outer"></div>
+    <div class="mw-progress-wrap">
+      <div class="mw-progress-fill" id="mwProgressFill"></div>
+    </div>
+    <div class="mw-btns">
+      <button class="mw-btn mw-pause" id="mwPauseBtn" onclick="mwTogglePause()">⏸ Pause</button>
+      <button class="mw-btn mw-cancel" onclick="mwClose()">✕ Close</button>
+    </div>
+    <div class="mw-hint">5 ሰኮንድ ቆይቶ ይዘጋል</div>
+  </div>
+</div>
+<!-- PAYMENT MODAL -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal-box">
+    <div class="modal-title">💳 DEPOSIT</div>
+    <p style="text-align:center;color:var(--muted);font-size:0.85rem;margin-bottom:14px;">
+      Amount: <b style="color:var(--gold)" id="payAmountText">0</b> ብር
+    </p>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      📤 Upload Payment Screenshot
+      <input type="file" id="fileInput" accept="image/*" style="display:none">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-send" onclick="sendPayment()">Send</button>
+      <button class="btn btn-close-modal" onclick="closePayModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+const SERVER = 'https://bingo-bingo-bingo.onrender.com';
+
+// ── NETWORK STATUS ──
+// Network status check
+setInterval(async () => {
+  try {
+    await fetch(SERVER + '/health');
+    let bar = document.getElementById('networkBar');
+    if(!bar){ bar=document.createElement('div'); bar.id='networkBar'; bar.style.cssText=`position:fixed;top:0;left:0;right:0;z-index:9999;padding:8px 16px;text-align:center;font-size:0.82rem;font-weight:700;transition:all .3s;`; document.body.appendChild(bar); }
+    bar.textContent='✅ ኢንተርኔት ተገናኝቷል';
+    bar.style.background='#00e676';
+    bar.style.color='#08090f';
+    setTimeout(()=>{ bar.style.display='none'; }, 2500);
+  } catch(e) {
+    let bar = document.getElementById('networkBar');
+    if(!bar){ bar=document.createElement('div'); bar.id='networkBar'; bar.style.cssText=`position:fixed;top:0;left:0;right:0;z-index:9999;padding:8px 16px;text-align:center;font-size:0.82rem;font-weight:700;transition:all .3s;`; document.body.appendChild(bar); }
+    bar.style.display='block';
+    bar.textContent='❌ ኢንተርኔት ተቋረጠ — እንደገና እየሞከረ ነው...';
+    bar.style.background='#ff3d57';
+    bar.style.color='white';
+  }
+}, 5000);
+// ── USER ──
+const tg = window.Telegram?.WebApp;
+let userId = '';
+if(tg?.initDataUnsafe?.user){
+  userId = String(tg.initDataUnsafe.user.id);
+} else {
+  userId = localStorage.getItem('bingo_uid') || ('guest_'+Date.now());
+  localStorage.setItem('bingo_uid', userId);
+}
+document.getElementById('userIdShow').textContent = tg?.initDataUnsafe?.user?.first_name || userId;
+
+// ── STATE ──
+let confirmedCards = [];
+let allConfirmedData = {};
+let displayNames = {};
+let calledNumbers = [];
+let savedCalledNumbers = [];
+let selectedCard = null;
+let balance = 0;
+// SSE connection
+const evtSource = new EventSource(SERVER + '/events');
+evtSource.onmessage = (e) => {
+  const data = JSON.parse(e.data);
+  if(data.type === 'balance'){
+  if(String(data.uid) === String(userId)){
+    balance = data.balance;
+    document.getElementById('balanceVal').textContent = balance;
+    const cdBal = document.getElementById('cdBalance');
+if(cdBal) cdBal.textContent = balance;
+  }
+}
+if(data.type === 'card_taken'){
+  if(data.totalCards !== undefined) document.getElementById('topCards').textContent = data.totalCards;
+if(data.totalPlayers !== undefined) document.getElementById('topPlayers').textContent = data.totalPlayers;
+  if(data.prize !== undefined) document.getElementById('prizeShow').textContent = data.prize;
+if(data.bet !== undefined) document.getElementById('betShow').textContent = data.bet;
+  const el = document.getElementById('cn' + data.cardId);
+  if(el){
+    if(String(data.userId) === String(userId)){
+      el.className = 'card-num mine';
+    } else {
+      el.className = 'card-num taken';
+    }
+  }
+}
+if(data.type === 'winner_popup') {
+  const myWin = (data.winners||[]).find(w => String(w.user) === String(userId));
+  if(!myWin) return;
+  const share = data.share || 0;
+  const called = (data.calledNumbers||[]).map(Number);
+  showMyWinPopup(myWin, share, called);
+  setTimeout(() => showToast('🎉 ' + share + ' ብር balance ላይ ታከለ!'), 1000);
+}
+  if(data.type === 'winner') {
+    const now = Date.now();
+    if(now - winnerShownTime < 8000) return;
+    winnerShownTime = now;
+    const winners = Array.isArray(data.winners) ? data.winners : Object.values(data.winners || {});
+    const share = data.share || data.prize || 0;
+    const called = (data.calledNumbers && data.calledNumbers.length > 0) 
+  ? data.calledNumbers.map(Number) 
+  : [...savedCalledNumbers];
+    
+    if(winners.length === 1) {
+      document.getElementById('winnerNameDisplay').textContent = '🏆 ' + (winners[0].displayName || winners[0].user);
+      document.getElementById('winnerCardDisplay').textContent = 'Card #' + winners[0].cardId;
+    } else {
+      document.getElementById('winnerNameDisplay').textContent = '🏆 ' + winners.length + ' አሸናፊዎች!';
+      document.getElementById('winnerCardDisplay').textContent = winners.map((w,i) => `${i+1}. ${w.displayName||w.user} — Card #${w.cardId}`).join('\n');
+    }
+    document.getElementById('winnerPrizeDisplay').textContent = share;
+    
+    const wbWrap = document.getElementById('winnerBoardWrap');
+    wbWrap.innerHTML = '';
+    winners.forEach(w => renderWinnerBoard(Number(w.cardId), called, wbWrap));
+    async function playWinnerSequence() {
+  if(!soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    if(ctx.state === 'suspended') await ctx.resume();
+
+    const r1 = await fetch(`${SERVER}/tts/winner-announce`);
+    if(!r1.ok) throw new Error('fetch failed');
+    const buf1 = await r1.arrayBuffer();
+    
+    await new Promise((resolve, reject) => {
+      ctx.decodeAudioData(buf1, decoded => {
+        const src = ctx.createBufferSource();
+        src.buffer = decoded;
+        src.connect(ctx.destination);
+        src.onended = resolve;
+        src.start(0);
+      }, reject);
+    });
+
+    for(let i = 0; i < 1; i++) {
+      playFanfare();
+      await new Promise(r => setTimeout(r, 500));
+      
+      const r2 = await fetch(`${SERVER}/tts/bingo`);
+      const buf2 = await r2.arrayBuffer();
+      await new Promise((resolve, reject) => {
+        ctx.decodeAudioData(buf2.slice(0), decoded => {
+          const src = ctx.createBufferSource();
+          src.buffer = decoded;
+          src.connect(ctx.destination);
+          src.onended = resolve;
+          src.start(0);
+        }, reject);
+      });
+      
+      await new Promise(r => setTimeout(r, 300));
+    }
+  } catch(e) {
+    console.error('Winner sound:', e);
+    playFanfare();
+  }
+}
+    unlockAudio();
+const amIWinner = winners.find(w => String(w.user) === String(userId));
+if(!amIWinner && audioCtx) audioCtx.resume().then(() => { playWinnerSequence(); });
+spawnConfetti();
+    const overlay = document.getElementById('winnerOverlay');
+overlay.style.display = 'flex';
+overlay.classList.add('show');
+    window._winTimer = winnerCloseTimer = setTimeout(() => {
+  const overlay = document.getElementById('winnerOverlay');
+  overlay.classList.remove('show');
+  overlay.style.display = 'none';
+  document.getElementById('confettiWrap').innerHTML = '';
+}, 5500);
+    
+    const myWin = winners.find(w => String(w.user) === String(userId));
+        if(myWin) setTimeout(() => { showToast('🎉 ' + (share||pw.prize||0) + ' ብር balance ላይ ታከለ!'); }, 1000);
+        if(myWin && soundEnabled){
+          fetch(SERVER + '/tts/congrats/' + (share || pw.prize || 0))
+            .then(r => r.arrayBuffer())
+            .then(buf => {
+              const ctx = getAudioCtx();
+              ctx.decodeAudioData(buf, decoded => {
+                const src = ctx.createBufferSource();
+                const gain = ctx.createGain();
+                gain.gain.value = 3.0;
+                src.buffer = decoded;
+                src.connect(gain);
+                gain.connect(ctx.destination);
+                src.start(0);
+              });
+            }).catch(()=>{});
+        }
+  }
+};
+let payAmount = 0;
+let gameStarted = false;
+let cdPlayerTimer = null;
+let winnerShownTime = 0;
+let winnerCloseTimer = null;
+window._winTimer = null;
+async function initApp() {
+  try {
+    const tgU = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const fullName = tgU?.first_name || tgU?.username || userId;
+    const [gameRes, userRes] = await Promise.all([
+  fetch(SERVER + '/game-state').then(r => r.json()),
+  fetch(SERVER + '/user-state?userId=' + userId + '&firstName=' + encodeURIComponent(fullName)).then(r => r.json()),
+]);
+
+const confData = gameRes.game?.confirmedNumbers || gameRes.confirmedNumbers || {};
+allConfirmedData = confData;
+confirmedCards = Object.keys(confData)
+  .filter(k => String(confData[k]) === String(userId))
+  .map(Number);
+
+const total = Object.keys(confData).length;
+const allUnique = new Set(Object.values(confData)).size;
+document.getElementById('topCards').textContent = total;
+document.getElementById('topPlayers').textContent = allUnique;
+document.getElementById('accTopCards').textContent = total;
+document.getElementById('accTopPlayers').textContent = allUnique;
+document.getElementById('takenCount').textContent = total;
+document.getElementById('freeCount').textContent = 100 - total;
+updateCardGrid(confData);
+
+balance = userRes.balance || 0;
+document.getElementById('balanceVal').textContent = balance;
+const cdBal = document.getElementById('cdBalance');
+if(cdBal) cdBal.textContent = balance;
+
+if(gameRes.status?.started) {
+  gameStarted = true;
+  toggleGameUI(true);
+}
+
+const betVal = gameRes.bet || 0;
+document.getElementById('betShow').textContent = betVal;
+document.getElementById('betGame').textContent = betVal;
+
+    
+
+await new Promise(resolve => setTimeout(resolve, 400));
+    document.getElementById('loadingScreen').style.display = 'none';
+    
+    if(userRes && userRes.isNew === true) {
+      await fetch(SERVER + '/set-not-new', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ userId })
+      });
+      document.getElementById('welcomeScreen').style.display = 'flex';
+    }
+
+  } catch (e) {
+    console.error('Init error:', e);
+    document.getElementById('loadingScreen').style.display = 'none';
+  }
+}
+initApp();
+
+// ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// ── ENGLISH TTS — Web Speech API (100% works on Telegram)
+// Format: "B 5", "N 32", "BINGO! Winner found!" etc.
+// Web Speech API English voice is built-in on ALL Android/iOS
+// No CORS, no external API, no setup needed.
+// ════════════════════════════════════════════════════════
+
+// Pre-load voices (some browsers load async)
+
+// ════════════════════════════════════════════════
+// 🎵 PROFESSIONAL AMHARIC SOUND SYSTEM
+// ════════════════════════════════════════════════
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+let unlocked = false;
+let ttsQueue = [];
+let ttsBusy = false;
+
+// ── Amharic Number Names ──
+const AM_NUMS = {
+  1:'አንድ',2:'ሁለት',3:'ሶስት',4:'አራት',5:'አምስት',
+  6:'ስድስት',7:'ሰባት',8:'ስምንት',9:'ዘጠኝ',10:'አስር',
+  11:'አስራ አንድ',12:'አስራ ሁለት',13:'አስራ ሶስት',14:'አስራ አራት',15:'አስራ አምስት',
+  16:'አስራ ስድስት',17:'አስራ ሰባት',18:'አስራ ስምንት',19:'አስራ ዘጠኝ',20:'ሃያ',
+  21:'ሃያ አንድ',22:'ሃያ ሁለት',23:'ሃያ ሶስት',24:'ሃያ አራት',25:'ሃያ አምስት',
+  26:'ሃያ ስድስት',27:'ሃያ ሰባት',28:'ሃያ ስምንት',29:'ሃያ ዘጠኝ',30:'ሰላሳ',
+  31:'ሰላሳ አንድ',32:'ሰላሳ ሁለት',33:'ሰላሳ ሶስት',34:'ሰላሳ አራት',35:'ሰላሳ አምስት',
+  36:'ሰላሳ ስድስት',37:'ሰላሳ ሰባት',38:'ሰላሳ ስምንት',39:'ሰላሳ ዘጠኝ',40:'አርባ',
+  41:'አርባ አንድ',42:'አርባ ሁለት',43:'አርባ ሶስት',44:'አርባ አራት',45:'አርባ አምስት',
+  46:'አርባ ስድስት',47:'አርባ ሰባት',48:'አርባ ስምንት',49:'አርባ ዘጠኝ',50:'አምሳ',
+  51:'አምሳ አንድ',52:'አምሳ ሁለት',53:'አምሳ ሶስት',54:'አምሳ አራት',55:'አምሳ አምስት',
+  56:'አምሳ ስድስት',57:'አምሳ ሰባት',58:'አምሳ ስምንት',59:'አምሳ ዘጠኝ',60:'ስልሳ',
+  61:'ስልሳ አንድ',62:'ስልሳ ሁለት',63:'ስልሳ ሶስት',64:'ስልሳ አራት',65:'ስልሳ አምስት',
+  66:'ስልሳ ስድስት',67:'ስልሳ ሰባት',68:'ስልሳ ስምንት',69:'ስልሳ ዘጠኝ',70:'ሰባ',
+  71:'ሰባ አንድ',72:'ሰባ ሁለት',73:'ሰባ ሶስት',74:'ሰባ አራት',75:'ሰባ አምስት'
+};
+
+const AM_LETTERS = { B:'ቢ', I:'አይ', N:'ኤን', G:'ጂ', O:'ኦ' };
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+  return audioCtx;
+}
+
+// ── iOS/Telegram Audio Unlock ──
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new AudioCtx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (window.speechSynthesis) {
+      const u = new SpeechSynthesisUtterance('');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    }
+    unlocked = true;
+  } catch(e) {}
+}
+document.body.addEventListener('touchstart', unlockAudio, {passive:true});
+document.body.addEventListener('click', unlockAudio);
+// ── SOUND TOGGLE ──
+let soundEnabled = localStorage.getItem('bingo_sound') !== 'off';
+
+window.toggleSound = function() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('bingo_sound', soundEnabled ? 'on' : 'off');
+  const btn = document.getElementById('soundToggle');
+  if(soundEnabled) {
+    btn.textContent = '🔊 ON';
+    btn.style.color = 'var(--green)';
+    unlockAudio();
+    try {
+      const silence = new Audio();
+      silence.play().catch(()=>{});
+    } catch(e) {}
+  } else {
+    btn.textContent = '🔇 OFF';
+    btn.style.color = 'var(--red)';
+  }
+}
+
+// Page ሲከፈት state ያስታውስ
+if(!soundEnabled) {
+  document.getElementById('soundToggle').textContent = '🔇 OFF';
+  document.getElementById('soundToggle').style.color = 'var(--red)';
+}
+// ── Web Audio Effects ──
+function playDing() {
+  try {
+    const ctx = getAudioCtx();
+    // Layer 1: main tone
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1); gain1.connect(ctx.destination);
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(1046, ctx.currentTime);
+    osc1.frequency.exponentialRampToValueAtTime(523, ctx.currentTime + 0.4);
+    gain1.gain.setValueAtTime(0.5, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.5);
+    // Layer 2: shimmer
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2); gain2.connect(ctx.destination);
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(2092, ctx.currentTime);
+    gain2.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc2.start(ctx.currentTime);
+    osc2.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+}
+
+function playClick() {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.15);
+  } catch(e) {}
+}
+
+function playFanfare() {
+  try {
+    const ctx = getAudioCtx();
+    const melody = [
+      {f:523, t:0},    // C5
+      {f:659, t:0.15}, // E5
+      {f:784, t:0.30}, // G5
+      {f:1047,t:0.45}, // C6
+      {f:1319,t:0.60}, // E6
+      {f:1047,t:0.80}, // C6
+      {f:1319,t:0.95}, // E6
+      {f:1568,t:1.10}, // G6
+    ];
+    melody.forEach(({f, t}) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const start = ctx.currentTime + t;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.4, start + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
+      osc.start(start);
+      osc.stop(start + 0.3);
+    });
+  } catch(e) {}
+}
+
+// ── Amharic TTS ──
+function speakAmharic(text) {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) { resolve(); return; }
+    // Cancel any stuck speech
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    // Try to find Amharic voice, fallback to any available
+    const voices = window.speechSynthesis.getVoices();
+    const amVoice = voices.find(v => v.lang.startsWith('am') || v.lang.startsWith('ti'));
+    if (amVoice) utt.voice = amVoice;
+    utt.lang = 'am-ET';
+    utt.rate = 0.88;
+    utt.pitch = 1.05;
+    utt.volume = 1.0;
+    utt.onend = () => resolve();
+    utt.onerror = () => resolve();
+    // Timeout fallback — 4 seconds max
+    const timeout = setTimeout(() => { window.speechSynthesis.cancel(); resolve(); }, 4000);
+    utt.onend = () => { clearTimeout(timeout); resolve(); };
+    window.speechSynthesis.speak(utt);
+  });
+}
+
+// ── Queue System ──
+function enqueueTTS(text) {
+  ttsQueue.push(text);
+  if (!ttsBusy) processTTSQueue();
+}
+
+async function processTTSQueue() {
+  if (ttsQueue.length === 0) { ttsBusy = false; return; }
+  ttsBusy = true;
+  const text = ttsQueue.shift();
+  await speakAmharic(text);
+  // Small gap between announcements
+  await new Promise(r => setTimeout(r, 200));
+  processTTSQueue();
+}
+
+// ── Main: Speak Bingo Number ──
+// Plays: ding sound + "ቢ — አምስት" in Amharic
+// ── Auto unlock — function ውጭ ያለ ──
+let audioUnlocked = false;
+document.addEventListener('touchstart', function unlockOnce() {
+  if(audioUnlocked) return;
+  audioUnlocked = true;
+  unlockAudio();
+  const silence = new Audio();
+  silence.play().catch(()=>{});
+}, {passive: true, once: true});
+
+let currentTTSSource = null;
+let lastSpokenNumber = null;
+
+function speakNumber(n) {
+  if(!soundEnabled) return;
+  const num = parseInt(n);
+  if(isNaN(num) || num < 1 || num > 75) return;
+  
+  lastSpokenNumber = num; // ✅ ቅድሚያ set
+  
+  if(currentTTSSource){
+    try{ currentTTSSource.stop(); }catch(e){}
+    currentTTSSource = null;
+  }
+  fetch(`${SERVER}/tts/number/${num}`)
+    .then(r => r.arrayBuffer())
+    .then(buf => {
+      if(num !== lastSpokenNumber) return; // stale — skip
+      const ctx = getAudioCtx();
+      ctx.decodeAudioData(buf, decoded => {
+        if(num !== lastSpokenNumber) return;
+        const src = ctx.createBufferSource();
+        src.buffer = decoded;
+        src.connect(ctx.destination);
+        currentTTSSource = src;
+        src.start(0);
+      });
+    })
+    .catch(()=>{});
+}
+  
+// ════════════════════════════════════════════════
+// ── Core speak function ──
+// ── Pre-recorded Audio ──
+const audioCache = {};
+
+
+
+// ── BOARDS ──
+const boards = {};
+function hashSeed(n) {
+  let h = n;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+function generateBoard(seed) {
+  let s = seed;
+  function rand() {
+    s = (Math.imul(s, 1664525) + 1013904223) & 0xFFFFFFFF;
+    return (s >>> 0) / 0x100000000;
+  }
+  function getNums(min, max) {
+    let arr = [];
+    while(arr.length < 5) {
+      let n = Math.floor(rand() * (max - min + 1)) + min;
+      if(!arr.includes(n)) arr.push(n);
+    }
+    return arr;
+  }
+  let B=getNums(1,15), I=getNums(16,30), N=getNums(31,45),
+      G=getNums(46,60), O=getNums(61,75);
+  let b = [];
+  for(let i=0;i<5;i++) b.push(B[i],I[i],N[i],G[i],O[i]);
+  b[12] = 'FREE';
+  return b;
+}
+for(let i=1;i<=100;i++) boards[i]=generateBoard(hashSeed(i));
+
+function getLetter(n){
+  if(n<=15)return'B';if(n<=30)return'I';if(n<=45)return'N';if(n<=60)return'G';return'O';
+}
+
+// ── TOAST ──
+window.showToast=(msg)=>{
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.style.display='block';
+  setTimeout(()=>t.style.display='none',2200);
+};
+
+// ── SCREENS ──
+const tgBack = window.Telegram?.WebApp?.BackButton;
+function autoMarkAllRead(){
+  fetch(SERVER + '/unread-notifications')
+    .then(r => r.json())
+    .then(list => {
+      list.filter(n => String(n.uid) === String(userId))
+        .forEach(n => {
+          fetch(SERVER + '/mark-notification-read', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ id: n.id })
+          }).catch(()=>{});
+        });
+      setTimeout(loadNotifications, 500);
+    }).catch(()=>{});
+}
+// ── NOTIFICATIONS ──
+async function loadNotifications(){
+  try {
+    const r = await fetch(SERVER + '/unread-notifications');
+    const list = await r.json();
+    const mine = list.filter(n => String(n.uid) === String(userId));
+    const badge = document.getElementById('notifBadge');
+    const notifList = document.getElementById('notifList');
+    const notifEmpty = document.getElementById('notifEmpty');
+    if(badge){
+      if(mine.length > 0){
+        badge.style.display = 'flex';
+        badge.textContent = mine.length;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    if(!notifList) return;
+    if(mine.length === 0){
+      notifList.innerHTML = '';
+      if(notifEmpty) notifEmpty.style.display = 'block';
+      return;
+    }
+    if(notifEmpty) notifEmpty.style.display = 'none';
+    notifList.innerHTML = mine.map(n => `
+      <div class="notif-row" style="display:flex;align-items:flex-end;gap:8px;">
+        <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;
+          background:linear-gradient(135deg,#1a0008,#550020);
+          border:1.5px solid rgba(255,51,85,.4);
+          display:flex;align-items:center;justify-content:center;font-size:0.9rem;">🏆</div>
+        <div style="flex:1;
+          background:linear-gradient(135deg,#0d0f1e,#08090f);
+          border:1px solid rgba(255,51,85,.2);
+          border-radius:16px 16px 16px 4px;
+          padding:10px 14px;">
+          <div style="font-size:0.72rem;color:var(--text);line-height:1.7;white-space:pre-line;">${n.message}</div>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+            <button onclick="markNotifRead(${n.id})" style="
+              background:rgba(255,51,85,.12);border:1px solid rgba(255,51,85,.3);
+              color:var(--red);border-radius:8px;padding:3px 10px;
+              font-size:0.55rem;font-weight:700;cursor:pointer;
+              font-family:'Outfit',sans-serif;">✓ አነበብኩ</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch(e){}
+}
+
+window.markNotifRead = async (id) => {
+  await fetch(SERVER + '/mark-notification-read', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ id })
+  });
+  loadNotifications();
+};
+setInterval(loadNotifications, 5000);
+window.showScreen=(id)=>{
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='myCardsScreen') renderMyCards();
+if(id==='notifScreen') loadNotifications();
+  if(id==='accountScreen'){
+    spawnAccBalls();
+    document.getElementById('balanceVal').textContent=balance;
+    document.getElementById('accTopPlayers').textContent=document.getElementById('topPlayers').textContent;
+    document.getElementById('accTopCards').textContent=document.getElementById('topCards').textContent;
+    document.getElementById('accTopPrize').textContent=document.getElementById('topPrize').textContent;
+    tgBack?.show();
+  } else if(id==='selectScreen'){
+    tgBack?.hide();
+  } else {
+    tgBack?.show();
+  }
+};
+
+tgBack?.onClick(()=>{
+  const active = document.querySelector('.screen.active');
+  if(!active) return;
+  const id = active.id;
+  if(id==='accountScreen') showScreen('selectScreen');
+  else if(id==='gameScreen') showScreen('selectScreen');
+  else if(id==='myCardsScreen') showScreen('accountScreen');
+  else if(id==='winHistoryScreen') showScreen('accountScreen');
+  else if(id==='historyScreen') showScreen('accountScreen');
+  else if(id==='notifScreen'){ autoMarkAllRead(); showScreen('accountScreen'); }
+});
+// ════════════════════════════════════════════════════════
+// ── CARD PREVIEW — ✅ NEW
+// Card ስትምረጥ BINGO board preview ታሳያለህ
+// ════════════════════════════════════════════════════════
+function showCardPreview(cardId){
+  const panel = document.getElementById('cardPreviewPanel');
+  const grid  = document.getElementById('previewGrid');
+  const title = document.getElementById('previewTitle');
+
+  // Fade out
+  panel.style.opacity = '0';
+  panel.style.transform = 'scale(0.96)';
+  panel.style.transition = 'opacity .15s ease, transform .15s ease';
+
+  setTimeout(()=>{
+    title.textContent = 'CARD #' + cardId;
+    grid.innerHTML = '';
+
+  // Header row: B I N G O
+['B','I','N','G','O'].forEach(h=>{
+  const d=document.createElement('div');
+  d.className='preview-cell ph';
+  d.textContent=h;
+  grid.appendChild(d);
+});
+
+  // Board cells
+  boards[cardId].forEach(n=>{
+    const d = document.createElement('div');
+    if(n === 'FREE'){
+      d.className = 'preview-cell pf';
+      d.textContent = '★';
+    } else {
+      d.className = 'preview-cell';
+      d.textContent = n;
+      // Highlight already-called numbers during game
+      if(calledNumbers.includes(n)){
+        d.style.background = 'var(--green)';
+        d.style.color = '#08090f';
+      }
+    }
+    grid.appendChild(d);
+  });
+
+  // Fade in
+    panel.style.opacity = '1';
+    panel.style.transform = 'scale(1)';
+  }, 150);
+
+  panel.classList.add('show');
+}
+
+window.closePreview = ()=>{
+  document.getElementById('cardPreviewPanel').classList.remove('show');
+};
+
+// ── BUILD CARDS GRID ──
+const grid = document.getElementById('cardsGrid');
+for(let i=1;i<=100;i++){
+  const d=document.createElement('div');
+  d.className='card-num';d.id='cn'+i;d.textContent=i;
+  d.onclick=()=>{
+    unlockAudio();
+
+    // 🔒 Game ከጀመረ block ያድርግ
+    if(gameStarted){
+      showToast('🔒 Game ጀምሯል! Card መያዝ አይቻልም');
+      return;
+    }
+
+    if(d.classList.contains('taken')){
+  return;
+}
+    if(d.classList.contains('mine')){
+      showToast('✅ Card #'+i+' የኔ card ነው');
+      showCardPreview(i);
+      return;
+    }
+
+    // Deselect previous
+    document.querySelectorAll('.card-num').forEach(c=>{
+      if(!c.classList.contains('mine') && !c.classList.contains('taken'))
+        c.classList.remove('selected');
+    });
+
+    selectedCard = i;
+    d.classList.add('selected');
+
+    const badge = document.getElementById('selectedCountBadge');
+    badge.textContent = '#'+i;
+    badge.style.display = 'inline-block';
+
+    // ✅ Show preview
+    showCardPreview(i);
+  };
+  grid.appendChild(d);
+}
+
+// ── UPDATE CARD GRID ──
+function updateCardGrid(data){
+  let takenCount = 0;
+  const prevTaken = new Set();
+  const prevMine = new Set();
+
+  // ያለፈውን state ያስታውስ
+  for(let i=1;i<=100;i++){
+    const el = document.getElementById('cn'+i);
+    if(!el) continue;
+    if(el.classList.contains('taken')) prevTaken.add(i);
+    if(el.classList.contains('mine')) prevMine.add(i);
+  }
+
+  for(let i=1;i<=100;i++){
+    const el = document.getElementById('cn'+i);
+    if(!el) continue;
+    const owner = data[String(i)];
+    el.className = 'card-num';
+
+    if(owner !== undefined && owner !== null){
+      takenCount++;
+      if(String(owner) === String(userId)){
+        el.classList.add('mine');
+        // አዲስ mine ከሆነ animation
+        if(!prevMine.has(i)){
+          el.classList.add('just-mine');
+          setTimeout(()=>{ el.classList.remove('just-mine'); }, 600);
+        }
+      } else {
+        el.classList.add('taken');
+        // አዲስ taken ከሆነ animation
+        if(!prevTaken.has(i)){
+          el.classList.add('just-taken');
+          setTimeout(()=>{ el.classList.remove('just-taken'); }, 600);
+        }
+      }
+    } else {
+      if(selectedCard === i) el.classList.add('selected');
+    }
+  }
+
+  document.getElementById('takenCount').textContent = takenCount;
+  document.getElementById('freeCount').textContent = 100 - takenCount;
+}
+
+// ── CONFIRM ──
+window.confirmCard = async () => {
+  // Audio unlock
+  try {
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    const silence = new Audio();
+    silence.play().catch(()=>{});
+  } catch(e) {}
+
+  if(!selectedCard){ showToast('👉 Card ምረጥ!'); return; }
+  if(gameStarted){ showToast('🔒 Game ጀምሯል!'); return; }
+
+  try {
+    const res = await fetch(SERVER + '/confirm-card', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ userId, cardId: selectedCard })
+    });
+    const data = await res.json();
+
+    if(data.ok){
+  playClick();
+  selectedCard = null;
+  document.getElementById('selectedCountBadge').style.display='none';
+     
+    } else {
+      showToast(data.msg || '❌ Error!');
+    }
+} catch(e) {
+    showToast('❌ ' + (e.message || 'Connection failed'));
+  }
+};
+
+// ── COUNTDOWN ──
+setInterval(async () => {
+  try {
+    const res = await fetch(SERVER + '/game-state');
+    const d = await res.json();
+    const val = d.countdown;
+    const bar = document.getElementById('countdownBar');
+    const topBadge = document.getElementById('topCdBadge');
+    const topVal = document.getElementById('topCdVal');
+    const cdBarVal = document.getElementById('cdBarVal');
+    clearInterval(cdPlayerTimer); cdPlayerTimer = null;
+
+    if(val && val.active && val.startAt){
+      bar.classList.add('active');
+      topBadge.style.display = 'inline-flex';
+      function tick(){
+        const remain = Math.max(0, Math.floor((val.startAt - Date.now()) / 1000));
+        const m = Math.floor(remain/60), sec = remain%60;
+        const timeStr = String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+        topVal.textContent = timeStr;
+        cdBarVal.textContent = timeStr;
+        if(remain <= 0){
+          clearInterval(cdPlayerTimer); cdPlayerTimer = null;
+          topBadge.style.display = 'none';
+          bar.classList.remove('active');
+        }
+      }
+      tick(); cdPlayerTimer = setInterval(tick, 1000);
+    } else {
+      topBadge.style.display = 'none';
+      bar.classList.remove('active');
+    }
+  } catch(e) {}
+}, 3000);
+// ── REALTIME ──
+let lastAnnouncementTime = 0;
+let winnerShown = false;
+let lastResetTime = 0;
+let lastCalledCount = 0;
+
+async function pollGameState() {
+  try {
+    const res = await fetch(SERVER + '/game-state');
+    const d = await res.json();
+ // Balance realtime
+const balRes = await fetch(SERVER + '/get-balance?uid=' + userId);
+const balData = await balRes.json();
+if(balData.balance !== undefined){
+  balance = balData.balance;
+  document.getElementById('balanceVal').textContent = balance;
+  const cdBal = document.getElementById('cdBalance');
+if(cdBal) cdBal.textContent = balance;
+}   
+    // 🔍 DEBUG
+    console.log('Full data:', JSON.stringify(d));
+    console.log('announcement:', d.announcement);
+
+    // Bet & Prize
+    document.getElementById('betShow').textContent = d.bet || 0;
+    document.getElementById('betGame').textContent = d.bet || 0;
+    const prize = d.prize || 0;
+    document.getElementById('prizeShow').textContent = prize;
+    document.getElementById('prizeGame').textContent = prize;
+    document.getElementById('topPrize').textContent = prize;
+    document.getElementById('accTopPrize').textContent = prize;
+
+    // Confirmed Numbers
+    const confirmedNumbers = d.game?.confirmedNumbers || d.confirmedNumbers;
+// displayNames update
+  if(d.displayNames) {
+    displayNames = d.displayNames;
+  }
+if(confirmedNumbers) {
+  allConfirmedData = confirmedNumbers;
+      allConfirmedData = d.confirmedNumbers;
+      confirmedCards = Object.keys(d.confirmedNumbers)
+        .filter(k => String(d.confirmedNumbers[k]) === String(userId))
+        .map(Number);
+      const total = Object.keys(d.confirmedNumbers).length;
+      const unique = new Set(Object.values(d.confirmedNumbers)).size;
+      document.getElementById('topCards').textContent = total;
+      document.getElementById('topPlayers').textContent = unique;
+      document.getElementById('accTopCards').textContent = total;
+      document.getElementById('accTopPlayers').textContent = unique;
+      updateCardGrid(d.confirmedNumbers);
+    }
+
+    // Called Numbers
+    if(d.calledNumbers) {
+      const vals = Array.isArray(d.calledNumbers) ? d.calledNumbers : Object.values(d.calledNumbers);
+      calledNumbers = vals;
+savedCalledNumbers = [...vals];
+      vals.forEach(n => { const el = document.getElementById('num'+n); if(el) el.classList.add('called'); });
+      
+      if(vals.length > lastCalledCount) {
+        lastCalledCount = vals.length;
+        const last = vals[vals.length - 1];
+        if(last) {
+          const l = getLetter(last);
+          const lcEl = document.getElementById('lcNum');
+          if(lcEl) lcEl.innerHTML = `<span class="lc-letter">${l}</span>${last}`;
+          
+          const colors = {B:'#2260e0',I:'#8833ee',N:'#ff3355',G:'#00a844',O:'#f0c040'};
+          const textColors = {B:'#fff',I:'#fff',N:'#fff',G:'#fff',O:'#06080f'};
+          // gameScreen ላይ gameBallDisplay ያሳይ
+const gameBall = document.getElementById('gameBallDisplay');
+if(gameBall) {
+  gameBall.style.display = 'flex';
+  document.getElementById('gameBallLetter').textContent = l;
+  document.getElementById('lcNum').textContent = last;
+  gameBall.style.background = `radial-gradient(circle at 35% 35%,rgba(255,255,255,.3),${colors[l]} 60%,${colors[l]}aa)`;
+  gameBall.style.borderColor = colors[l];
+  gameBall.style.color = textColors[l];
+  gameBall.style.boxShadow = `0 0 18px ${colors[l]}88`;
+  // ── Animation ──
+  gameBall.classList.remove('ball-throw');
+  void gameBall.offsetWidth;
+  gameBall.classList.add('ball-throw');
+}
+          const ball = document.getElementById('lastBallDisplay');
+          ball.style.display = 'flex';
+          ball.style.background = `radial-gradient(circle at 35% 35%,rgba(255,255,255,.3),${colors[l]} 60%,${colors[l]}aa)`;
+          ball.style.borderColor = colors[l];
+          ball.style.color = textColors[l];
+          ball.style.boxShadow = `0 0 18px ${colors[l]}88`;
+          document.getElementById('ballLetter').textContent = l;
+          document.getElementById('ballNum').textContent = last;
+          ball.classList.remove('ball-throw');
+          void ball.offsetWidth;
+          ball.classList.add('ball-throw');
+
+          if(String(last) !== String(lastSpokenNumber)) {
+            lastSpokenNumber = last;
+            speakNumber(parseInt(last));
+          }
+        }
+        setTimeout(() => updateGameCards(), 1200);
+        if(gameStarted) renderLeaderboard();
+        renderGameLeaderboard();
+      }
+    }
+
+    // Status
+const status = d.status || d.game?.status || {};
+
+if(status.started && !gameStarted) {
+  gameStarted = true;
+  toggleGameUI(true);
+  document.getElementById('liveBtn').style.display = 'inline-flex';
+  buildTV();
+  renderGameCards();
+  updateGameCards();
+  showScreen('gameScreen');
+} else if(!status.started && gameStarted) {
+  gameStarted = false;
+  toggleGameUI(false);
+  document.getElementById('liveBtn').style.display = 'none';
+  showScreen('selectScreen');
+  confirmedCards = [];
+  allConfirmedData = {};
+  selectedCard = null;
+  calledNumbers = [];
+  lastCalledCount = 0;
+  document.getElementById('selectedCountBadge').style.display = 'none';
+  for(let i = 1; i <= 100; i++) {
+    const el = document.getElementById('cn'+i);
+    if(el) el.className = 'card-num';
+  }
+  document.getElementById('takenCount').textContent = '0';
+  document.getElementById('freeCount').textContent = '100';
+}
+    
+
+    // Countdown
+    if(d.countdown) {
+      clearInterval(cdPlayerTimer); cdPlayerTimer = null;
+      const val = d.countdown;
+      const bar = document.getElementById('countdownBar');
+      const topBadge = document.getElementById('topCdBadge');
+      const topVal = document.getElementById('topCdVal');
+      const cdBarVal = document.getElementById('cdBarVal');
+      if(val && val.active && val.startAt) {
+        bar.classList.add('active');
+        topBadge.style.display = 'inline-flex';
+        function tick() {
+          const remain = Math.max(0, Math.floor((val.startAt - Date.now()) / 1000));
+          const m = Math.floor(remain/60), sec = remain%60;
+          const timeStr = String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+          topVal.textContent = timeStr;
+          cdBarVal.textContent = timeStr;
+          if(remain <= 0) { clearInterval(cdPlayerTimer); cdPlayerTimer = null; topBadge.style.display = 'none'; bar.classList.remove('active'); }
+        }
+        tick(); cdPlayerTimer = setInterval(tick, 1000);
+      } else {
+        topBadge.style.display = 'none';
+        bar.classList.remove('active');
+      }
+    }
+// ✅ pendingWinner check
+    if(pwTime && pwTime !== lastAnnouncementTime) {
+    if(Date.now() - winnerShownTime < 8000) return;
+    winnerShownTime = Date.now();
+      const pw = d.pendingWinner;
+      const pwTime = pw.time;
+      if(pwTime && pwTime !== lastAnnouncementTime) {
+        lastAnnouncementTime = pwTime;
+        const winners = Array.isArray(pw.winners)
+          ? pw.winners
+          : Object.values(pw.winners || {});
+        const share = Math.floor((pw.prize || 0) / (winners.length || 1));
+        if(winners.length === 1) {
+          const w = winners[0];
+          document.getElementById('winnerNameDisplay').textContent = '🏆 ' + (w.displayName || w.user || 'አሸናፊ');
+          document.getElementById('winnerCardDisplay').textContent = 'Card #' + w.cardId;
+        } else {
+          document.getElementById('winnerNameDisplay').textContent = '🏆 ' + winners.length + ' አሸናፊዎች!';
+          document.getElementById('winnerCardDisplay').textContent =
+            winners.map((w,i) => `${i+1}. ${w.displayName||w.user} — Card #${w.cardId}`).join('\n');
+        }
+        document.getElementById('winnerPrizeDisplay').textContent = share || pw.prize || 0;
+        const wbWrap = document.getElementById('winnerBoardWrap');
+        wbWrap.innerHTML = '';
+        winners.forEach(w => renderWinnerBoard(Number(w.cardId), savedCalledNumbers.map(Number), wbWrap));
+        playFanfare();
+        spawnConfetti();
+        const overlay = document.getElementById('winnerOverlay');
+overlay.style.display = 'flex';
+overlay.classList.add('show');
+  window._winTimer = winnerCloseTimer = setTimeout(() => {
+  const overlay = document.getElementById('winnerOverlay');
+  overlay.classList.remove('show');
+  overlay.style.display = 'none';
+  document.getElementById('confettiWrap').innerHTML = '';
+}, 5500);
+        const myWin = winners.find(w => String(w.user) === String(userId));
+        if(myWin) setTimeout(() => { showToast('🎉 ' + (share||pw.prize||0) + ' ብር balance ላይ ታከለ!'); }, 1000);
+      }
+    }
+
+    // Announcement
+if(d.announcement && d.announcement.type === 'winner') {
+  showToast('📢 Announcement received!'); // DEBUG
+  const annoTime = d.announcement.time;
+  showToast('Time: ' + annoTime + ' Last: ' + lastAnnouncementTime); // DEBUG
+  if(annoTime && annoTime !== lastAnnouncementTime && !winnerShown) {
+    if(Date.now() - winnerShownTime < 8000) return;
+    winnerShownTime = Date.now();
+    showToast('✅ Showing overlay!'); // DEBUG
+    lastAnnouncementTime = annoTime;
+    winnerShown = true;
+    setTimeout(() => { winnerShown = false; }, 8000);
+    const data = d.announcement;
+    const winners = Array.isArray(data.winners)
+      ? data.winners
+      : Object.values(data.winners || {});
+    const share = data.share || data.prize || 0;
+
+    if(winners.length === 1) {
+      const w = winners[0];
+      document.getElementById('winnerNameDisplay').textContent = '🏆 ' + (w.displayName || w.user || 'አሸናፊ');
+      document.getElementById('winnerCardDisplay').textContent = 'Card #' + w.cardId;
+    } else {
+      const namesList = winners.map((w,i) => `${i+1}. ${w.displayName||w.user} — Card #${w.cardId}`).join('\n');
+      document.getElementById('winnerNameDisplay').textContent = '🏆 ' + winners.length + ' አሸናፊዎች!';
+      document.getElementById('winnerCardDisplay').textContent = namesList;
+    }
+    document.getElementById('winnerPrizeDisplay').textContent = share;
+
+    // ✅ Winner Board
+    const wbWrap = document.getElementById('winnerBoardWrap');
+    wbWrap.innerHTML = '';
+    winners.forEach(w => {
+  renderWinnerBoard(Number(w.cardId), calledNumbers.map(Number), wbWrap);
+});
+
+    playFanfare();
+    spawnConfetti();
+const overlay = document.getElementById('winnerOverlay');
+overlay.style.display = 'flex';
+overlay.style.zIndex = '9999999';
+showToast('Overlay display: ' + overlay.style.display); // DEBUG
+
+    winnerCloseTimer = setTimeout(() => {
+  const overlay = document.getElementById('winnerOverlay');
+  overlay.classList.remove('show');
+  overlay.style.display = 'none';
+  document.getElementById('confettiWrap').innerHTML = '';
+}, 5500);
+
+    const myWin = winners.find(w => String(w.user) === String(userId));
+    if(myWin) setTimeout(() => { showToast('🎉 ' + share + ' ብር balance ላይ ታከለ!'); }, 1000);
+  }
+}
+
+  } catch(e) {
+    console.error('Poll error:', e.message);
+  }
+}
+
+setInterval(pollGameState, 1000);
+pollGameState();
+// ── WINNER BOARD ──
+function getWinningCells(cardId, called){
+  if(!called || called.length === 0) called = [...savedCalledNumbers];
+  const b = boards[cardId];
+  const lines = [];
+  for(let r=0;r<5;r++) lines.push([r*5,r*5+1,r*5+2,r*5+3,r*5+4]);
+  for(let c=0;c<5;c++) lines.push([c,c+5,c+10,c+15,c+20]);
+  lines.push([0,6,12,18,24]);
+  lines.push([4,8,12,16,20]);
+  const winCells = new Set();
+  lines.forEach(line=>{
+    const wins = line.every(i=>{
+      const n = b[i];
+      return n==='FREE' || called.map(Number).includes(Number(n));
+    });
+    if(wins) line.forEach(i=>winCells.add(i));
+  });
+  return winCells;
+}
+function renderWinnerBoard(cardId, called, wrap, scale='0.62rem'){
+  if(!called || called.length === 0) called = savedCalledNumbers;
+  const calledNums = called.map(Number);
+  if(!wrap) wrap = document.getElementById('winnerBoardWrap');
+  if(!wrap || !boards[cardId]) return;
+  const board = boards[cardId];
+  const winCells = getWinningCells(cardId, calledNums);
+  const container = document.createElement('div');
+  container.style.cssText = 'margin-bottom:8px;';
+  container.innerHTML = `
+    <div style="font-size:0.58rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;text-align:center;">🎴 CARD #${cardId}</div>
+    <div class="wb-grid" id="wbGrid${cardId}"></div>
+  `;
+  wrap.appendChild(container);
+  const g = container.querySelector('#wbGrid'+cardId);
+
+  ['B','I','N','G','O'].forEach(h=>{
+    const d=document.createElement('div');
+    d.className='wb-cell wh';
+    d.style.fontSize=scale;
+    d.textContent=h;
+    g.appendChild(d);
+  });
+
+  board.forEach((n,i)=>{
+    const d=document.createElement('div');
+    d.style.fontSize=scale;
+    d.style.transition='all .2s';
+
+    if(n==='FREE'){
+      if(winCells.has(i)){
+  d.style.cssText=`font-size:${scale};background:linear-gradient(135deg,#ff0000,#cc0000);color:#ffffff;border-radius:3px;padding:3px 1px;text-align:center;font-weight:900;border:1px solid #ff0000;box-shadow:0 0 8px rgba(255,0,0,.7);`;
+      } else {
+        d.className='wb-cell free';
+      }
+      d.textContent='★';
+    } else {
+      const isWin = winCells.has(i);
+      const isHit = calledNums.includes(Number(n));
+
+      if(isWin){
+  d.style.cssText=`font-size:${scale};background:linear-gradient(135deg,#ff0000,#cc0000);color:#ffffff;border-radius:3px;padding:3px 1px;text-align:center;font-weight:900;border:2px solid #ff0000;box-shadow:0 0 14px rgba(255,0,0,.9);`;
+      } else if(isHit){
+  d.style.cssText=`font-size:${scale};background:#00e676;color:#06080f;border-radius:3px;padding:3px 1px;text-align:center;font-weight:700;border:1px solid #00e676;box-shadow:0 0 8px rgba(0,230,118,.7);`;
+      } else {
+        d.className='wb-cell';
+      }
+      d.textContent=n;
+    }
+    g.appendChild(d);
+  });
+}
+// ── CONFETTI ──
+function spawnConfetti(){
+  const wrap=document.getElementById('confettiWrap');wrap.innerHTML='';
+  const colors=['#f5c842','#00e676','#ff3d57','#2979ff','#aa44ff','#00e5ff','#ffffff'];
+  for(let i=0;i<60;i++){
+    const d=document.createElement('div');d.className='confetti-dot';
+    d.style.cssText=`left:${Math.random()*100}%;background:${colors[Math.floor(Math.random()*colors.length)]};width:${6+Math.random()*10}px;height:${6+Math.random()*10}px;border-radius:${Math.random()>.5?'50%':'2px'};animation-duration:${2+Math.random()*3}s;animation-delay:${Math.random()*2}s;`;
+    wrap.appendChild(d);
+  }
+}
+function clearConfetti(){ document.getElementById('confettiWrap').innerHTML=''; }
+
+// ── TV ──
+document.getElementById('gameScreen').addEventListener('touchstart', ()=>{
+  unlockAudio();
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}, {passive:true});
+function buildTV(){
+  const tg2=document.getElementById('tvGrid');tg2.innerHTML='';
+  ['B','I','N','G','O'].forEach(h=>{
+    const d=document.createElement('div');d.className='tv-cell header';d.textContent=h;tg2.appendChild(d);
+  });
+  for(let row=1;row<=15;row++){
+    [row,row+15,row+30,row+45,row+60].forEach(n=>{
+      const d=document.createElement('div');
+      d.className='tv-cell';d.id='num'+n;d.textContent=n;
+      if(calledNumbers.includes(n))d.classList.add('called');
+      tg2.appendChild(d);
+    });
+  }
+}
+
+// ── GAME CARDS ──
+function renderGameCards(){
+  const box = document.getElementById('myGameCard');
+  if(!box) return;
+  box.innerHTML = '';
+  if(confirmedCards.length === 0){
+    box.innerHTML = '<div style="color:var(--muted);font-size:0.7rem;padding:6px;">ምንም card የለም</div>';
+    return;
+  }
+  if(confirmedCards.length >= 3){
+    box.style.display = 'grid';
+    box.style.gridTemplateColumns = 'repeat(2,1fr)';
+    box.style.gap = '4px';
+  } else {
+    box.style.display = 'block';
+    box.style.gridTemplateColumns = '';
+    box.style.gap = '';
+  }
+  confirmedCards.forEach(id => box.appendChild(buildCardBoard(id, true)));
+}
+function buildCardBoard(id, isMine, forceNormal=false){
+  const wrap=document.createElement('div');
+  const isSingle = !forceNormal && confirmedCards.length === 1;
+  wrap.className='game-board-wrap'+(isSingle?' single-card':'');
+  wrap.dataset.cardId=id;
+
+  // ── Win check ──
+  const winCells = getWinningCells(id, calledNumbers);
+  const isWinner = winCells.size > 0;
+
+  // ── Winner Banner ──
+  if(isWinner && isMine){
+    const banner = document.createElement('div');
+    banner.style.cssText = `
+      background:linear-gradient(135deg,#ff2200,#ff6600);
+      border-radius:8px 8px 0 0;
+      padding:6px 10px;
+      display:flex;align-items:center;justify-content:center;gap:6px;
+      animation:winBannerPulse .8s ease infinite alternate;
+      margin:-5px -5px 5px -5px;
+    `;
+    banner.innerHTML = `
+      <div style="width:100%;text-align:center;margin-bottom:3px;">
+        <span style="font-size:0.6rem;letter-spacing:3px;color:rgba(255,255,255,.7);text-transform:uppercase;">🎉 እንኳን ደስ አለህ! 🎉</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
+        <span style="font-size:1.1rem;animation:mwTrophyBounce .8s ease infinite alternate;">🏆</span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:3px;color:#fff;
+          text-shadow:0 0 14px rgba(255,255,255,.5);">እንኳን ደስ አለህ!</span>
+        <span style="font-size:1.1rem;animation:mwTrophyBounce .8s ease infinite alternate;">🏆</span>
+      </div>
+    `;
+    wrap.appendChild(banner);
+  }
+
+  const title=document.createElement('div');title.className='game-board-title';
+  title.innerHTML=`<span style="color:${isWinner&&isMine?'#ff6600':'var(--gold)'}">Card #${id}</span>`;
+  const g=document.createElement('div');g.className='game-grid';g.id='gg'+id;
+  ['B','I','N','G','O'].forEach(h=>{const d=document.createElement('div');d.className='gc header';d.textContent=h;g.appendChild(d);});
+  boards[id].forEach((n,i)=>{
+    const d=document.createElement('div');
+    d.className='gc'+(n==='FREE'?' free-cell':'');
+    d.id='gc'+id+'_'+i;d.textContent=n==='FREE'?'★':n;
+    const isWinCell = winCells.has(i);
+    if(n!=='FREE'&&calledNumbers.includes(n)){
+      d.classList.add(isMine?'hit-mine':'hit-other');
+    }
+    if(isWinCell){ d.classList.add('win-cell'); }
+    if(n==='FREE' && isWinCell){ d.classList.add('win-cell'); }
+    g.appendChild(d);
+  });
+  wrap.appendChild(title);wrap.appendChild(g);
+
+  // ── Winner wrap glow ──
+  if(isWinner && isMine){
+    wrap.style.cssText += `
+      border-color:rgba(255,80,0,.6)!important;
+      box-shadow:0 0 20px rgba(255,60,0,.3),0 0 40px rgba(255,60,0,.1);
+      background:linear-gradient(135deg,#150500,#0d0300)!important;
+    `;
+  }
+
+  return wrap;
+}
+function updateGameCards(){
+  confirmedCards.forEach(id=>{
+    const winCells = getWinningCells(id, calledNumbers);
+    boards[id].forEach((n,i)=>{
+      const d=document.getElementById('gc'+id+'_'+i);
+      if(!d)return;
+      if(n==='FREE'){
+        if(winCells.has(i)) d.classList.add('win-cell');
+        return;
+      }
+      if(calledNumbers.includes(n)) d.classList.add('hit-mine');
+      if(winCells.has(i)) d.classList.add('win-cell');
+    });
+  });
+  Object.entries(allConfirmedData).filter(([k,v])=>String(v)!==String(userId)).forEach(([k])=>{
+    const id=Number(k);
+    boards[id].forEach((n,i)=>{
+      if(n==='FREE')return;
+      const d=document.getElementById('gc'+id+'_'+i);
+      if(!d)return;
+      if(calledNumbers.includes(n))d.classList.add('hit-other');
+    });
+    renderGameLeaderboard();
+  });
+}
+renderGameLeaderboard();
+// ── NAV ──
+window.goLive=()=>{
+  if(!gameStarted){showToast('⏳ ጫወታው ገና አልጀመረም!');return;}
+  showScreen('gameScreen');buildTV();renderGameCards();updateGameCards();
+};
+
+// ── MY CARDS ──
+function renderMyCards(){
+  const box=document.getElementById('myCardsList');box.innerHTML='';
+  if(confirmedCards.length===0){
+    box.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px;">ምንም ካርድ አልተያዘም</p>';
+    return;
+  }
+  confirmedCards.forEach(id=>{
+    const wrap=document.createElement('div');wrap.className='game-board-wrap';
+    const title=document.createElement('div');title.className='game-board-title';
+    title.innerHTML=`<span style="color:var(--gold)">Card #${id}</span>`;
+    const g=document.createElement('div');g.className='game-grid';
+    ['B','I','N','G','O'].forEach(h=>{const d=document.createElement('div');d.className='gc header';d.textContent=h;g.appendChild(d);});
+    boards[id].forEach(n=>{
+      const d=document.createElement('div');d.className='gc'+(n==='FREE'?' free-cell':'');
+      d.textContent=n==='FREE'?'★':n;
+      if(n!=='FREE'&&calledNumbers.includes(n))d.classList.add('hit-mine');
+      g.appendChild(d);
+    });
+    wrap.appendChild(title);wrap.appendChild(g);box.appendChild(wrap);
+  });
+}
+// ── ROUND HISTORY ──
+window.loadHistory = async () => {
+  const box = document.getElementById('historyList');
+  box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading...</p>';
+
+  const res = await fetch(SERVER + '/all-winners');
+const data = await res.json();
+const winners = Array.isArray(data.winners) 
+  ? data.winners 
+  : Object.values(data.winners || {});
+const currentRound = data.round || 1;
+
+  if(!data || !Object.keys(data).length){
+    box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">📭 ምንም ታሪክ የለም</p>';
+    return;
+  }
+
+  winners.sort((a,b) => (b.time||0) - (a.time||0));
+  box.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:0.72rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;padding:4px 2px 10px;';
+  header.textContent = 'Round ' + currentRound + ' — ያለፉ አሸናፊዎች';
+  box.appendChild(header);
+
+  winners.forEach((w, i) => {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background:var(--card);border:1px solid var(--border);
+      border-radius:14px;padding:14px 16px;margin-bottom:10px;
+      display:flex;align-items:center;gap:12px;
+    `;
+    const isMine = String(w.user) === String(userId);
+    if(isMine) card.style.borderColor = 'var(--gold)';
+    card.innerHTML = `
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--muted);width:30px;text-align:center;">${i+1}</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:0.92rem;color:${isMine?'var(--gold)':'var(--text)'};">
+          🏆 ${w.displayName || w.user} ${isMine ? '(You)' : ''}
+        </div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-top:3px;">Card #${w.cardId}</div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">
+          ${w.time ? new Date(Number(w.time)).toLocaleString('en-GB',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:var(--green);">${w.prize || '—'}</div>
+        <div style="font-size:0.65rem;color:var(--muted);letter-spacing:1px;">ብር</div>
+      </div>
+    `;
+    box.appendChild(card);
+  });
+};
+// ── WIN HISTORY ──
+window.loadWinHistory = async () => {
+  const box = document.getElementById('winHistoryList');
+  box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">Loading...</p>';
+
+  const res = await fetch(SERVER + '/all-winners');
+const json = await res.json();
+const data = json.winners || [];
+
+if(!data){
+  box.innerHTML = '<p ...>📭 ምንም አሸናፊ ታሪክ የለም</p>';
+    document.getElementById('whTotalWins').textContent = '0';
+    document.getElementById('whTotalPrize').textContent = '0';
+    document.getElementById('whBestWin').textContent = '0';
+    return;
+  }
+
+  const allWinners = Array.isArray(data) ? data : Object.values(data);
+  const myWins = allWinners.filter(w => String(w.user) === String(userId));
+
+  if(!myWins.length){
+    box.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">😔 ገና አላሸነፍክም — ሞክር!</p>';
+    document.getElementById('whTotalWins').textContent = '0';
+    document.getElementById('whTotalPrize').textContent = '0';
+    document.getElementById('whBestWin').textContent = '0';
+    return;
+  }
+
+  const totalWins = myWins.length;
+  const totalPrize = myWins.reduce((sum, w) => sum + (Number(w.prize) || 0), 0);
+const bestWin = Math.max(...myWins.map(w => Number(w.prize) || 0));
+
+  document.getElementById('whTotalWins').textContent = totalWins;
+  document.getElementById('whTotalPrize').textContent = totalPrize;
+  document.getElementById('whBestWin').textContent = bestWin;
+
+  box.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'font-size:0.72rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;padding:4px 2px 10px;';
+  header.textContent = totalWins + ' አሸናፊ ጊዜ';
+  box.appendChild(header);
+
+  myWins.sort((a,b) => (b.time||0) - (a.time||0));
+
+  myWins.forEach((w) => {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background:linear-gradient(135deg,#1a1500,#0d1200);
+      border:1px solid var(--gold);
+      border-radius:14px;padding:14px 16px;margin-bottom:10px;
+      display:flex;align-items:center;gap:12px;
+    `;
+    card.innerHTML = `
+      <div style="font-size:1.8rem;">🏆</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:0.92rem;color:var(--gold);">
+          Card #${w.cardId}
+        </div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:3px;">
+          ${w.time ? new Date(Number(w.time)).toLocaleString('en-GB',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--green);line-height:1;">${w.prize || '—'}</div>
+        <div style="font-size:0.65rem;color:var(--muted);letter-spacing:1px;">ብር</div>
+      </div>
+    `;
+    box.appendChild(card);
+  });
+};
+
+
+// ════════════════════════════════════════════════════════
+// ── LEADERBOARD — game ጀምሮ ሳለ select screen ላይ ──────
+// ════════════════════════════════════════════════════════
+
+function toggleGameUI(started){
+  const cardSection  = document.getElementById('cardSelectSection');
+  const legendRow    = document.querySelector('.legend-row');
+  const previewPanel = document.getElementById('cardPreviewPanel');
+  const lbPanel      = document.getElementById('leaderboardPanel');
+  const confirmBtn   = document.getElementById('confirmBtn');
+  const bottomBar    = document.getElementById('bottomBar');
+
+    if(started){
+    confirmBtn.style.background = 'linear-gradient(135deg,var(--red),#cc0022)';
+    confirmBtn.innerHTML = '🔴 LIVE ጨዋታ ክፈት';
+    confirmBtn.onclick = ()=>{ showScreen('gameScreen'); buildTV(); renderGameCards(); updateGameCards(); };
+    } else {
+    if(cardSection)  cardSection.style.display  = '';
+    if(legendRow)    legendRow.style.display     = '';
+    document.getElementById('betPreviewRow').style.display = 'flex';
+    document.getElementById('lastBallDisplay').style.display = 'none';
+    document.getElementById('countdownBar').classList.remove('active');
+    lbPanel.classList.remove('show');
+    // Restore confirm button
+    confirmBtn.style.background = 'linear-gradient(135deg,var(--green),#00a854)';
+    confirmBtn.innerHTML = '✔ Confirm Card <span class="sel-badge" id="selectedCountBadge" style="display:none"></span>';
+    confirmBtn.onclick = confirmCard;
+  }
+}
+
+function calcHits(cardId){
+  return boards[cardId].filter(n => n !== 'FREE' && calledNumbers.includes(n)).length;
+}
+
+// How many numbers needed to complete best bingo line
+function calcBestLine(cardId){
+  const b = boards[cardId];
+  const lines = [];
+  // Rows
+  for(let r=0;r<5;r++) lines.push([r*5,r*5+1,r*5+2,r*5+3,r*5+4]);
+  // Cols
+  for(let c=0;c<5;c++) lines.push([c,c+5,c+10,c+15,c+20]);
+  // Diagonals
+  lines.push([0,6,12,18,24]);
+  lines.push([4,8,12,16,20]);
+
+  let minNeeded = 5;
+  lines.forEach(line=>{
+    const needed = line.filter(i=>{
+      const n = b[i];
+      return n !== 'FREE' && !calledNumbers.includes(n);
+    }).length;
+    if(needed < minNeeded) minNeeded = needed;
+  });
+  return minNeeded; // 0 = BINGO!
+}
+
+async function renderLeaderboard(){
+  const list = document.getElementById('lbList');
+  const calledEl = document.getElementById('lbCalledCount');
+  if(calledEl) calledEl.textContent = calledNumbers.length;
+  if(!list) return;
+
+  const res = await fetch(SERVER + '/all-winners');
+const json = await res.json();
+const data = json.winners || [];
+
+  if(!data || !Object.keys(data).length){
+    list.innerHTML = '<div class="lb-empty">📭 ምንም አሸናፊ ታሪክ የለም</div>';
+    return;
+  }
+
+  const winners = data
+    .sort((a,b) => (b.time||0) - (a.time||0))
+    .slice(0, 20);
+
+  list.innerHTML = '';
+
+  winners.forEach((w, i) => {
+    const isMine = String(w.user) === String(userId);
+    const row = document.createElement('div');
+    row.className = 'lb-row' + (isMine ? ' lb-mine' : '');
+    row.innerHTML = `
+      <div class="lb-bar" style="width:100%;background:linear-gradient(90deg,rgba(240,192,64,.06),transparent);"></div>
+      <div class="lb-rank ${i===0?'r1':i===1?'r2':i===2?'r3':''}">${i===0?'👑':i+1}</div>
+      <div class="lb-info">
+        <div class="lb-name">${w.displayName || w.user} ${isMine?'(You)':''}</div>
+        <div class="lb-card-id">Card #${w.cardId} · ${w.time ? new Date(w.time).toLocaleString('am-ET',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+      </div>
+      <div class="lb-hits">
+        <div class="lb-hit-num" style="color:var(--gold)">${w.prize||0}</div>
+        <div class="lb-hit-label">ብር</div>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+}
+function renderGameLeaderboard(){
+  const gameLb = document.getElementById('gameLbList');
+  if(!gameLb) return;
+
+  const entries = Object.entries(allConfirmedData);
+  if(entries.length === 0){
+    gameLb.innerHTML = '<div class="lb-empty">ምንም ተጫዋች የለም</div>';
+    return;
+  }
+
+  const scores = entries.map(([cardId, owner])=>{
+    const id = Number(cardId);
+    const hits = calcHits(id);
+    const needed = calcBestLine(id);
+    const isMine = String(owner) === String(userId);
+    const displayName = displayNames[owner] || String(owner);
+    const label = isMine ? 'You — Card #'+id : displayName + ' — Card #'+id;
+    return { id, hits, needed, isMine, label };
+  });
+
+  scores.sort((a,b)=> a.needed - b.needed || b.hits - a.hits);
+
+  gameLb.innerHTML = '';
+  scores.forEach((s, idx)=>{
+    const rank = idx + 1;
+    const row = document.createElement('div');
+    row.className = 'lb-row' + (s.isMine ? ' lb-mine-green' : '') + (rank===1 ? ' lb-top' : '');
+    row.innerHTML = `
+      <div class="lb-bar"></div>
+      <div style="font-size:0.38rem;width:9px;text-align:center;flex-shrink:0;font-family:'Bebas Neue',sans-serif;color:${rank===1?'#f0c040':rank===2?'#aab4c8':rank===3?'#cd7f32':'#3a4868'};">${rank===1?'👑':rank}</div>
+      <div class="lb-info">
+        <div class="lb-name">${s.label}</div>
+        <div class="lb-card-id">${s.needed===0?'🎉 BINGO!':s.needed+' ቀሪ'}</div>
+      </div>
+      <div class="lb-hits">
+        <div class="lb-hit-num">${s.hits}</div>
+        <div class="lb-hit-label">hits</div>
+      </div>
+    `;
+    gameLb.appendChild(row);
+  });
+}
+/* ══ MY WINNER POPUP ══ */
+let mwTimer = null;
+let mwPaused = false;
+
+window.mwClose = function() {
+  clearTimeout(mwTimer);
+  mwTimer = null;
+  const el = document.getElementById('myWinOverlay');
+  el.style.transition = 'opacity .3s ease';
+  el.style.opacity = '0';
+  setTimeout(() => {
+    el.classList.remove('show');
+    el.style.opacity = '';
+    el.style.transition = '';
+    mwPaused = false;
+    const btn = document.getElementById('mwPauseBtn');
+    if(btn) btn.textContent = '⏸ Pause';
+  }, 300);
+};
+
+window.mwTogglePause = function() {
+  mwPaused = !mwPaused;
+  const fill = document.getElementById('mwProgressFill');
+  const btn = document.getElementById('mwPauseBtn');
+  if(!fill || !btn) return;
+  if(mwPaused) {
+    fill.style.animationPlayState = 'paused';
+    btn.textContent = '▶ Resume';
+    clearTimeout(mwTimer);
+    mwTimer = null;
+  } else {
+    fill.style.animationPlayState = 'running';
+    btn.textContent = '⏸ Pause';
+    mwTimer = setTimeout(mwClose, 5000);
+  }
+};
+
+function mwShowConfetti() {
+  const canvas = document.getElementById('mwCanvas');
+  if(!canvas) return;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const ctx = canvas.getContext('2d');
+  const pieces = [];
+  const colors = ['#f0c040','#00e676','#ff3355','#3d7fff','#9b4dff','#00d4ff','#ffffff'];
+  for(let i = 0; i < 120; i++) {
+    pieces.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height - canvas.height,
+      r: 4 + Math.random() * 8,
+      d: Math.random() * 3 + 1,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      tiltSpeed: 0.1 + Math.random() * 0.3,
+      angle: 0,
+      shape: Math.random() > 0.5 ? 'rect' : 'circle',
+    });
+  }
+  let frame;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = 0.85;
+      if(p.shape === 'rect') {
+        ctx.fillRect(-p.r/2, -p.r/2, p.r, p.r * 1.4);
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r/2, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.restore();
+      p.y += p.d;
+      p.x += Math.sin(p.angle * 0.02) * 1.2;
+      p.angle += p.tiltSpeed * 3;
+      if(p.y > canvas.height + 20) {
+        p.y = -20;
+        p.x = Math.random() * canvas.width;
+      }
+    });
+    frame = requestAnimationFrame(draw);
+  }
+  draw();
+  setTimeout(() => { cancelAnimationFrame(frame); ctx.clearRect(0,0,canvas.width,canvas.height); }, 6000);
+}
+
+function mwRenderBoard(cardId, called) {
+  const wrap = document.getElementById('mwBoardWrap');
+  if(!wrap || !boards[cardId]) return;
+  wrap.innerHTML = `<div style="font-size:0.58rem;color:rgba(255,255,255,.3);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:6px;">🎴 CARD #${cardId}</div>`;
+  const grid = document.createElement('div');
+  grid.className = 'mw-board-grid';
+  const board = boards[cardId];
+  const lines = [];
+  for(let r=0;r<5;r++) lines.push([r*5,r*5+1,r*5+2,r*5+3,r*5+4]);
+  for(let c=0;c<5;c++) lines.push([c,c+5,c+10,c+15,c+20]);
+  lines.push([0,6,12,18,24],[4,8,12,16,20]);
+  const winSet = new Set();
+  lines.forEach(line => {
+    if(line.every(i => board[i]==='FREE' || called.includes(Number(board[i])))) {
+      line.forEach(i => winSet.add(i));
+    }
+  });
+  ['B','I','N','G','O'].forEach(h => {
+    const d = document.createElement('div');
+    d.className = 'mw-bc hdr'; d.textContent = h; grid.appendChild(d);
+  });
+  board.forEach((n, i) => {
+    const d = document.createElement('div');
+    if(n === 'FREE') {
+      d.className = 'mw-bc free' + (winSet.has(i)?' win':'');
+      d.textContent = '★';
+    } else {
+      const isWin = winSet.has(i);
+      const isHit = called.includes(Number(n));
+      d.className = 'mw-bc' + (isWin?' win':isHit?' hit':'');
+      d.textContent = n;
+    }
+    grid.appendChild(d);
+  });
+  wrap.appendChild(grid);
+}
+
+function showMyWinPopup(winner, share, called) {
+  mwPaused = false;
+  clearTimeout(mwTimer);
+  const fill = document.getElementById('mwProgressFill');
+  if(fill) {
+    fill.style.animation = 'none';
+    void fill.offsetWidth;
+    fill.style.animation = '';
+    fill.style.animationPlayState = 'running';
+  }
+  const btn = document.getElementById('mwPauseBtn');
+  if(btn) btn.textContent = '⏸ Pause';
+  document.getElementById('mwName').textContent = '🏆 ' + (winner.displayName || winner.user);
+  document.getElementById('mwCardInfo').textContent = 'Card #' + winner.cardId;
+  document.getElementById('mwPrize').textContent = share;
+  mwRenderBoard(Number(winner.cardId), (called||[]).map(Number));
+  mwShowConfetti();
+  const overlay = document.getElementById('myWinOverlay');
+  overlay.classList.add('show');
+  mwTimer = setTimeout(mwClose, 5000);
+}
+window.openPayModal=async(amt)=>{
+  const uid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || userId;
+  fetch(SERVER + '/open-bot', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ userId: uid, type:'deposit', amount: amt })
+  });
+  setTimeout(()=>{ window.Telegram?.WebApp?.close(); }, 500);
+};
+
+window.openWithdraw=async()=>{
+  const uid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || userId;
+  fetch(SERVER + '/open-bot', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ userId: uid, type:'withdraw' })
+  });
+  setTimeout(()=>{ window.Telegram?.WebApp?.close(); }, 500);
+};
+window.closePayModal=()=>document.getElementById('payModal').classList.remove('open');
+// ── DEPOSIT ──
+const amounts=[50,100,200,300,500,1000];
+const depGrid=document.getElementById('depositGrid');
+amounts.forEach((a,i)=>{
+  const isHot = a===200||a===500;
+  const b=document.createElement('div');
+  b.style.cssText=`
+    background:${isHot?'linear-gradient(145deg,#14100a,#0d0900)':'linear-gradient(145deg,#0d1018,#090c16)'};
+    border:1px solid ${isHot?'rgba(240,192,64,.35)':'rgba(255,255,255,.07)'};
+    border-radius:18px;padding:18px 8px;text-align:center;
+    cursor:pointer;position:relative;overflow:hidden;
+  `;
+  b.innerHTML=`
+    ${isHot?'<div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#f0c040,transparent);"></div>':''}
+    ${isHot?'<div style="position:absolute;top:6px;right:7px;font-size:0.42rem;font-weight:900;background:rgba(240,192,64,.15);color:#f0c040;border-radius:4px;padding:1px 5px;letter-spacing:1px;">HOT</div>':''}
+    <div style="font-family:\'Bebas Neue\',sans-serif;font-size:1.8rem;line-height:1;color:${isHot?'#f0c040':'#ccd0e0'};${isHot?'text-shadow:0 0 12px rgba(240,192,64,.4);':''}">${a}</div>
+    <div style="font-size:0.55rem;color:#3a4868;letter-spacing:1px;margin-top:3px;">ብር</div>
+  `;
+b.onclick=()=>window.openPayModal(a);
+  depGrid.appendChild(b);
+});
+</script>
+<style>
+@keyframes logoShine{
+  0%{background-position:0% center;}
+  100%{background-position:200% center;}
+}
+@keyframes logoIn{
+  0%{transform:scale(.4) translateY(-30px);opacity:0;}
+  100%{transform:scale(1) translateY(0);opacity:1;}
+}
+@keyframes fadeUp{
+  0%{opacity:0;transform:translateY(20px);}
+  100%{opacity:1;transform:translateY(0);}
+}
+@keyframes liveDot{
+  0%,100%{opacity:1;transform:scale(1);}
+  50%{opacity:.2;transform:scale(.5);}
+}
+@keyframes playPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(0,230,118,.5),0 8px 30px rgba(0,230,118,.3);}
+  60%{box-shadow:0 0 0 14px rgba(0,230,118,0),0 8px 30px rgba(0,230,118,.3);}
+}
+@keyframes ballFloat{
+  0%{transform:translateY(110vh) rotate(0deg);opacity:0;}
+  5%{opacity:.7;}
+  95%{opacity:.5;}
+  100%{transform:translateY(-120px) rotate(720deg);opacity:0;}
+}
+@keyframes ballSpin{
+  0%{transform:rotate(0deg);}
+  100%{transform:rotate(360deg);}
+}
+@keyframes ballGlow2{
+  from{box-shadow:0 0 30px rgba(240,192,64,.5),0 0 60px rgba(240,192,64,.2);}
+  to{box-shadow:0 0 50px rgba(240,192,64,.9),0 0 100px rgba(240,192,64,.4);}
+}
+@keyframes ticker{
+  0%{transform:translateX(0);}
+  100%{transform:translateX(-50%);}
+}
+
+@keyframes ringPulse{
+  0%{transform:translate(-50%,-50%) scale(1);opacity:1;}
+  100%{transform:translate(-50%,-50%) scale(1.5);opacity:0;}
+}
+@keyframes slideInLeft{
+  0%{transform:translateX(-30px);opacity:0;}
+  100%{transform:translateX(0);opacity:1;}
+}
+.tut-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:rgba(255,255,255,.15);
+  transition:all .3s ease;
+}
+.tut-dot.active-dot{
+  background:var(--gold);
+  width:20px;border-radius:4px;
+}
+</style>
+
+<script type="module">
+// ── Floating Balls ──
+(function(){
+  const wrap = document.getElementById('splashBalls');
+  if(!wrap) return;
+  const config = [
+    {n:'B',c:'#2260e0'},{n:'I',c:'#8833ee'},{n:'N',c:'#ff3355'},
+    {n:'G',c:'#00a844'},{n:'O',c:'#f0c040'}
+  ];
+  for(let i=0;i<18;i++){
+    const {n,c} = config[Math.floor(Math.random()*config.length)];
+    const num = Math.floor(Math.random()*75)+1;
+    const size = 32 + Math.floor(Math.random()*28);
+    const d = document.createElement('div');
+    d.style.cssText = `
+      position:absolute;
+      width:${size}px;height:${size}px;
+      border-radius:50%;
+      background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.35),${c} 55%,${c}99);
+      border:2px solid ${c}55;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      left:${Math.random()*95}%;
+      font-family:'Bebas Neue',sans-serif;
+      color:${n==='O'?'#06080f':'#fff'};
+      font-size:${size*0.28}px;
+      line-height:1;
+      animation:ballFloat ${5+Math.random()*8}s ${Math.random()*6}s linear infinite;
+      pointer-events:none;
+    `;
+    d.innerHTML = `<span style="font-size:${size*0.18}px;opacity:.7;line-height:1;">${n}</span><span>${num}</span>`;
+    wrap.appendChild(d);
+  }
+})();
+
+// ── Firebase Winners + Players ──
+(function(){
+  // Firebase ተጠቅሞ winners ይጫናል
+  // initializeApp already done in main script — reuse db
+  if(typeof db === 'undefined'){
+      setTimeout(tryLoadSplashData, 300);
+      return;
+    }
+    // Players count
+const SERVER = 'https://bingo-bingo-bingo.onrender.com';
+fetch(SERVER + '/game-state').then(r => r.json()).then(d => {
+  const data = d.confirmedNumbers || {};
+  const count = new Set(Object.values(data)).size;
+  const el = document.getElementById('splashPlayers');
+  if(el) el.textContent = count || '0';
+});
+
+// Top 3 winners
+
+fetch(SERVER + '/all-winners').then(r => r.json()).then(json => {
+  const box = document.getElementById('splashTopWinners');
+  if(!box) return;
+  const all = (json.winners || []).slice(0, 3);
+  if(!all.length){ box.innerHTML='<div style="text-align:center;color:#3a4868;font-size:0.75rem;">ምንም ታሪክ የለም</div>'; return; }
+  const medals = ['🥇','🥈','🥉'];
+  const colors = ['#f0c040','#aab4c8','#cd7f32'];
+  box.innerHTML = all.map((w,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;
+      border-bottom:${i<2?'1px solid rgba(255,255,255,.05)':'none'};">
+      <span style="font-size:1rem;flex-shrink:0;">${medals[i]}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.78rem;font-weight:700;color:${colors[i]};
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${w.display_name||w.uid||'—'}
+        </div>
+        <div style="font-size:0.6rem;color:#3a4868;">Card #${w.card_id}</div>
+      </div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:#00e676;flex-shrink:0;">
+        ${w.prize||0} ብር
+      </div>
+    </div>
+  `).join('');
+}).catch(()=>{
+  const box = document.getElementById('splashTopWinners');
+  if(box) box.innerHTML='<div style="text-align:center;color:#3a4868;font-size:0.75rem;">ምንም ታሪክ የለም</div>';
+});
+    
+// ── Activity Feed ──
+(function(){
+  const messages = [
+    {icon:'🎯', text:'ተጫዋች Card #12 ወሰደ!', color:'#aab4c8'},
+    {icon:'💰', text:'ተጫዋች 500 ብር አሸነፈ!', color:'#00e676'},
+    {icon:'🎱', text:'ተጫዋች Card #67 ወሰደ!', color:'#aab4c8'},
+    {icon:'🏆', text:'ተጫዋች 1000 ብር አሸነፈ!', color:'#f0c040'},
+    {icon:'🎯', text:'ተጫዋች Card #33 ወሰደ!', color:'#aab4c8'},
+    {icon:'💰', text:'ተጫዳች 200 ብር አሸነፈ!', color:'#00e676'},
+  ];
+  let idx = 0;
+  const feed = document.getElementById('activityFeed');
+  if(!feed) return;
+
+  function addActivity(){
+    const m = messages[idx % messages.length];
+    idx++;
+    const row = document.createElement('div');
+    row.style.cssText = `
+      display:flex;align-items:center;gap:8px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:20px;padding:5px 12px;
+      animation:slideInLeft .4s cubic-bezier(.34,1.56,.64,1);
+      opacity:0;
+    `;
+    row.innerHTML = `
+      <span style="font-size:0.85rem;">${m.icon}</span>
+      <span style="font-size:0.72rem;color:${m.color};flex:1;">${m.text}</span>
+      <span style="font-size:0.6rem;color:#3a4868;">ሁዋላ</span>
+    `;
+    feed.insertBefore(row, feed.firstChild);
+    setTimeout(()=>{ row.style.opacity='1'; }, 50);
+
+    // Max 3 rows
+    if(feed.children.length > 3){
+      const last = feed.lastChild;
+      last.style.transition = 'opacity .3s ease';
+      last.style.opacity = '0';
+      setTimeout(()=>{ if(last.parentNode) feed.removeChild(last); }, 300);
+    }
+  }
+
+  setTimeout(addActivity, 1500);
+  setInterval(addActivity, 2800);
+})();
+
+  
+// ── TUTORIAL — አዲስ ተጫዋች 1 ጊዜ ብቻ ──
+(function(){
+  if(localStorage.getItem('bingo_tutorial_seen')) return;
+  localStorage.setItem('bingo_tutorial_seen', '1');
+
+  const screen = document.getElementById('tutorialScreen');
+  if(!screen) return;
+  screen.style.display = 'flex';
+
+  const slides = document.querySelectorAll('.tut-slide');
+  const dots = document.querySelectorAll('.tut-dot');
+  const bar = document.getElementById('tutBar');
+  let current = 0;
+
+  function showSlide(idx){
+    slides.forEach((s,i)=>{
+      s.style.display = i===idx ? 'block' : 'none';
+      s.style.animation = i===idx ? 'fadeUp .4s ease' : '';
+    });
+    dots.forEach((d,i)=>{
+      d.className = 'tut-dot' + (i===idx?' active-dot':'');
+    });
+  }
+
+  let step = 0;
+  const interval = setInterval(()=>{
+    step++;
+    bar.style.width = (step / 4 * 100) + '%';
+    if(step <= 3){
+      current = step;
+      showSlide(current);
+    }
+    if(step >= 4){
+      clearInterval(interval);
+      screen.style.transition = 'opacity .4s ease';
+      screen.style.opacity = '0';
+      setTimeout(()=>{ screen.style.display='none'; }, 400);
+    }
+  }, 1250);
+})();
+
+// ── Auto Close Countdown — አዲስ ገቢ ብቻ ──
+(function(){
+  if(localStorage.getItem('bingo_visited')) return;
+  localStorage.setItem('bingo_visited', '1');
+
+  let secs = 5;
+  const cdEl = document.getElementById('splashCd');
+  const barEl = document.getElementById('splashCdBar');
+  if(!cdEl || !barEl) return;
+
+  const timer = setInterval(()=>{
+    secs--;
+    if(cdEl) cdEl.textContent = secs;
+    if(barEl) barEl.style.width = (secs / 5 * 100) + '%';
+    if(secs <= 0){
+      clearInterval(timer);
+      closeSplash();
+    }
+  }, 1000);
+
+  const btn = document.getElementById('splashPlayBtn');
+  if(btn) btn.addEventListener('click', ()=> clearInterval(timer));
+})();
+
+
+
+
+  // Account screen balls
+function spawnAccBalls(){
+  const wrap = document.getElementById('accBalls');
+  if(!wrap || wrap.children.length > 0) return;
+  const cfg=[{l:'B',c:'#2260e0'},{l:'I',c:'#8833ee'},{l:'N',c:'#ff3355'},{l:'G',c:'#00a844'},{l:'O',c:'#f0c040'}];
+  for(let i=0;i<14;i++){
+    const {l,c}=cfg[Math.floor(Math.random()*cfg.length)];
+    const num=Math.floor(Math.random()*75)+1;
+    const sz=26+Math.floor(Math.random()*24);
+    const d=document.createElement('div');
+    d.style.cssText=`
+      position:absolute;width:${sz}px;height:${sz}px;border-radius:50%;
+      background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.35),${c} 55%,${c}99);
+      border:2px solid ${c}55;left:${Math.random()*95}%;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      font-family:'Bebas Neue',sans-serif;font-size:${sz*.28}px;
+      color:${l==='O'?'#06080f':'#fff'};opacity:0.45;
+      animation:ballFloat ${6+Math.random()*9}s ${Math.random()*6}s linear infinite;
+    `;
+    d.innerHTML=`<span style="font-size:${sz*.17}px;opacity:.7;line-height:1">${l}</span><span>${num}</span>`;
+    wrap.appendChild(d);
+  }
+}
+document.getElementById('fileInput').onchange=()=>{
+  document.getElementById('uploadZone').textContent='✅ Photo selected!';
+};
+window.closePayModal=()=>document.getElementById('payModal').classList.remove('open');
+
+document.getElementById('closeWinBtn').onclick = () => {
+  clearTimeout(winnerCloseTimer);
+  const o = document.getElementById('winnerOverlay');
+  o.classList.remove('show');
+  o.style.display = 'none';
+  document.getElementById('confettiWrap').innerHTML = '';
+};
+
+document.getElementById('pauseWinBtn').onclick = () => {
+  const fill = document.getElementById('cdFill');
+  const btn = document.getElementById('pauseWinBtn');
+  if(!fill) return;
+  const isPaused = fill.style.animationPlayState === 'paused';
+  fill.style.animationPlayState = isPaused ? 'running' : 'paused';
+  btn.textContent = isPaused ? '⏸ Pause' : '▶ Resume';
+};
+window.sendPayment=async()=>{
+  const file=document.getElementById('fileInput').files[0];
+  if(!file){showToast('📷 ፎቶ አስገባ!');return;}
+
+  // 🔒 Validation
+  if(payAmount <= 0){showToast('❌ Amount 0 ሊሆን አይችልም!');return;}
+  if(payAmount < 10){showToast('❌ Minimum deposit 10 ብር ነው!');return;}
+  if(payAmount > 10000){showToast('❌ Maximum deposit 10,000 ብር ነው!');return;}
+  try{
+  const formData = new FormData();
+formData.append('photo', file);
+formData.append('userId', userId);
+formData.append('amount', payAmount);
+
+const res = await fetch(SERVER + '/submit-payment', {
+  method: 'POST',
+  body: formData
+});
+const data = await res.json();
+if(data.ok){
+  showToast('✅ Sent! Admin ያረጋግጣል');
+  closePayModal();
+} else {
+  showToast('❌ ' + (data.msg || 'Error'));
+}
+  }catch(e){showToast('❌ Error: '+e.message);}
+};
+</script>
+</body>
+  </html>
