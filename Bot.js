@@ -108,6 +108,19 @@ let lastBotAddedTime = 0;
 let currentCdMinutes = 3;
 let prevRealCount = 0;
 
+// ══ CACHE — DB queries ለመቀነስ ══
+let cachedBet = null;
+let cachedPct = null;
+let cachedBotFill = null;
+let cacheTime = 0;
+const CACHE_TTL = 30000; // 30 ሰኮንድ
+
+// ══ confirmedNumbers + botIds cache — 5 ሰኮንድ ══
+let cachedConf = {};
+let cachedBotIds = new Set();
+let confCacheTime = 0;
+const CONF_TTL = 5000; // 5 ሰኮንድ
+
 // ══ REAL PLAYER RATE TRACKER ══
 const realPlayerHistory = [];
 
@@ -164,11 +177,7 @@ function getCardCount(availableCount) {
   return Math.min(cardCount, availableCount);
 }
 
-// ══════════════════════════════════════════
 // ══ ENDPOINTS ══
-// ══════════════════════════════════════════
-
-// GET /admin/bot-fill — አሁን ያለውን fill አሳያል
 app.get('/admin/bot-fill', async (req, res) => {
   try {
     const fill = await getState('game/botFill') ?? 50;
@@ -179,16 +188,13 @@ app.get('/admin/bot-fill', async (req, res) => {
   }
 });
 
-// POST /admin/bot-fill — speed fill ይቀይራል
-// body: { fill: 1-100 }
-// 50  = baseline (normal speed)
-// 1   = እጅግ በጣም ቀርፋፋ  (×0.02)
-// 100 = እጅግ በጣም ፈጣን   (×2.00)
 app.post('/admin/bot-fill', async (req, res) => {
   try {
     const fill = Math.max(1, Math.min(100, Number(req.body.fill)));
     if (isNaN(fill)) return res.json({ ok: false, error: 'Invalid value. Use 1-100.' });
     await setState('game/botFill', fill);
+    // Cache ያጸዳል — ወዲያው ይተገበራል
+    cachedBotFill = fill;
     const speedMultiplier = fill / 50;
     log(`Admin set botFill → ${fill} (speed ×${speedMultiplier.toFixed(2)})`);
     res.json({ ok: true, fill, speedMultiplier: speedMultiplier.toFixed(2) });
@@ -197,13 +203,12 @@ app.post('/admin/bot-fill', async (req, res) => {
   }
 });
 
-// ══ SERVER START ══
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => log(`🌐 Admin API running on port ${PORT}`));
 
-// ══ POLL: smartBot/enabled (every 3s) ══
+// ══ POLL: smartBot/enabled — 30 ሰኮንድ (ቀደም 3 ሰኮንድ ነበር) ══
 async function pollSmartBotEnabled() {
   try {
     const val = await getState('smartBot/enabled');
@@ -220,37 +225,38 @@ async function pollSmartBotEnabled() {
     log(`❌ pollSmartBotEnabled error: ${e.message}`);
   }
 }
-setInterval(pollSmartBotEnabled, 3000);
+setInterval(pollSmartBotEnabled, 30000); // 3000 → 30000 ✅
 
-// ══ POLL: real player count (every 5s) ══
-async function pollRealPlayers() {
+// ══ POLL: game status — engine restart ══
+// Game ሲጠናቀቅ bot engine ይጀምራል
+async function pollGameStatus() {
   try {
-    const confData = (await getState('game/confirmedNumbers')) || {};
-    const allUids = Object.values(confData);
-    if (!allUids.length) { prevRealCount = 0; return; }
-
-    const botRes = await pool.query('SELECT uid FROM users WHERE is_bot=true');
-    const botIds = new Set(botRes.rows.map(r => String(r.uid)));
-
-    const realCount = allUids.filter(uid => !botIds.has(String(uid))).length;
-
-    if (realCount > prevRealCount) {
-      log(`Real player joined! Total real: ${realCount}`);
+    if (!smartBotEnabled) return;
+    if (botEngineRunning) return; // አስቀድሞ running ነው
+    const status = await getState('game/status');
+    if (!status?.started) {
+      log('▶ Game ended — restarting bot engine');
+      startBotEngine();
     }
-
-    updateRealPlayerHistory(realCount);
-    prevRealCount = realCount;
-  } catch (e) {
-    log(`❌ pollRealPlayers error: ${e.message}`);
+  } catch(e) {
+    log(`❌ pollGameStatus error: ${e.message}`);
   }
 }
-setInterval(pollRealPlayers, 5000);
+setInterval(pollGameStatus, 5000); // 5 ሰኮንድ
 
 // ══ BOT ENGINE ══
 function startBotEngine() {
   if (botEngineRunning) return;
   botEngineRunning = true;
   lastBotAddedTime = 0;
+  // Cache ያጸዳል — አዲስ round ስለሆነ
+  cachedBet = null;
+  cachedPct = null;
+  cachedBotFill = null;
+  cacheTime = 0;
+  cachedConf = {};
+  cachedBotIds = new Set();
+  confCacheTime = 0;
   log('Bot engine started');
   botEngineTimer = setInterval(botEngineTick, 1000);
 }
@@ -270,118 +276,96 @@ async function botEngineTick() {
   try {
     const timeMultiplier = getTimeMultiplier();
     if (timeMultiplier === null) {
-      await setState('smartBot/status', 'DEAD_ZONE');
       return;
     }
 
-    const [confData, bet, pctRaw, statusData, cdData, botFillRaw] = await Promise.all([
-      getState('game/confirmedNumbers'),
-      getState('game/bet'),
-      getState('game/percent'),
+    const now = Date.now();
+
+    // ══ CACHE — bet, percent, botFill 30 ሰኮንድ አንድ ጊዜ ብቻ ያነባል ══
+    if (!cachedBet || now - cacheTime > CACHE_TTL) {
+      const [betVal, pctVal, fillVal] = await Promise.all([
+        getState('game/bet'),
+        getState('game/percent'),
+        getState('game/botFill'),
+      ]);
+      cachedBet = betVal || 0;
+      cachedPct = (pctVal || 80) / 100;
+      cachedBotFill = Math.max(1, Math.min(100, Number(fillVal) ?? 50));
+      cacheTime = now;
+      log(`🔄 Cache refreshed: bet=${cachedBet} pct=${cachedPct} fill=${cachedBotFill}`);
+    }
+
+    // ══ ሁሉም tick ያነባል — status እና countdown ብቻ ══
+    const [statusData, cdData] = await Promise.all([
       getState('game/status'),
       getState('game/countdown'),
-      getState('game/botFill'),
     ]);
 
-    const conf = confData || {};
-    const betVal = bet || 0;
-    const pct = (pctRaw || 80) / 100;
     const status = statusData || {};
     const cd = cdData || {};
 
-    // ══════════════════════════════════════════
-    // ══ SPEED MULTIPLIER ══
-    //
-    // Range: 1 - 100  |  Baseline: 50
-    //
-    //   fill=1   → ×0.02  → እጅግ በጣም ቀርፋፋ
-    //   fill=25  → ×0.50  → ዝግ
-    //   fill=50  → ×1.00  → ኖርማል (baseline)
-    //   fill=75  → ×1.50  → ፈጣን
-    //   fill=100 → ×2.00  → እጅግ በጣም ፈጣን
-    // ══════════════════════════════════════════
-    const fillVal = Math.max(1, Math.min(100, Number(botFillRaw) ?? 50));
-    const speedMultiplier = fillVal / 50;
-
-    // ── Game live check ──
+    // ── Game live ሲሆን → engine ይቆማል — queries ይቀነሳል ══
     if (status.started) {
-      await setState('smartBot/status', 'GAME_LIVE');
+      stopBotEngine();
+      // Game ሲጠናቀቅ poll ይጀምራል — pollSmartBotEnabled ይጠራዋል
+      log('⏸ Game live — bot engine paused');
       return;
     }
 
     // ── Countdown active check ──
     if (!cd.active || !cd.startAt) {
-      await setState('smartBot/status', 'WAITING');
       return;
     }
 
-    // ── Countdown ሲያልቅ bot ይቆማል ──
-    const now = Date.now();
     const remainMs = Math.max(0, cd.startAt - now);
     const remainSecs = remainMs / 1000;
 
     if (remainSecs <= 0) {
-      await setState('smartBot/status', 'COUNTDOWN_ENDED');
       return;
     }
 
-    const botRes = await pool.query('SELECT uid FROM users WHERE is_bot=true');
-    const botIds = new Set(botRes.rows.map(r => String(r.uid)));
+    // ── confirmedNumbers + botIds — 5 ሰኮንድ አንድ ጊዜ ብቻ ──
+    if (now - confCacheTime > CONF_TTL) {
+      cachedConf = (await getState('game/confirmedNumbers')) || {};
+      const botRes = await pool.query('SELECT uid FROM users WHERE is_bot=true');
+      cachedBotIds = new Set(botRes.rows.map(r => String(r.uid)));
+      confCacheTime = now;
+    }
 
-    const allEntries = Object.values(conf);
+    const allEntries = Object.values(cachedConf);
     let realPlayers = 0;
-    allEntries.forEach(uid => { if (!botIds.has(String(uid))) realPlayers++; });
+    allEntries.forEach(uid => { if (!cachedBotIds.has(String(uid))) realPlayers++; });
+
+    // Real player rate ── pollRealPlayers ተወገደ — tick ውስጥ ይሰራል ✅
+    updateRealPlayerHistory(realPlayers);
+    prevRealCount = realPlayers;
 
     const totalSecs = (cd.cdMinutes || cd.mins || currentCdMinutes) * 60;
     const elapsedSecs = Math.max(1, totalSecs - remainSecs);
 
     if (elapsedSecs < 5) {
-      await setState('smartBot/status', 'WAITING_5S');
       return;
     }
 
-    // ══════════════════════════════════════════
-    // ══ CORE SPEED LOGIC ══
-    //
-    // Real players ፍጥነት inverse:
-    //   realRate ↑ → gapMs ↑ (bot ዝግ)
-    //   realRate ↓ → gapMs ↓ (bot ፈጣን)
-    //
-    // Formula:
-    //   gapMs = BASE_GAP × (1 + realRate² × SENSITIVITY)
-    //         ÷ speedMultiplier
-    //         × timeMultiplier
-    //         ± 15% random
-    // ══════════════════════════════════════════
-
     const realRate = getRealPlayerRate();
+    const speedMultiplier = cachedBotFill / 50;
 
     const BASE_GAP = 1500;
     const SENSITIVITY = 18.0;
 
     let gapMs = BASE_GAP * (1 + Math.pow(realRate, 2) * SENSITIVITY);
-
-    // Speed multiplier (fill 1-100, baseline 50)
     gapMs = gapMs / speedMultiplier;
-
-    // Time of day multiplier
     gapMs = gapMs * timeMultiplier;
-
-    // ±15% random variation
     const variation = gapMs * 0.15;
     gapMs = gapMs + (Math.random() * variation * 2 - variation);
-
-    // Clamp: min 150ms, max 12000ms
     gapMs = Math.max(150, Math.min(12000, gapMs));
 
-    await setState('smartBot/status',
-      `ACTIVE|fill:${fillVal}(×${speedMultiplier.toFixed(2)})|realRate:${realRate.toFixed(3)}/s|gap:${Math.round(gapMs)}ms|tMult:×${timeMultiplier.toFixed(2)}|remain:${Math.round(remainSecs)}s|real:${realPlayers}`
-    );
-
-    log(`📊 fill:${fillVal}(×${speedMultiplier.toFixed(2)}) | realRate:${realRate.toFixed(3)}/s | gap:${Math.round(gapMs)}ms | ×${timeMultiplier.toFixed(2)} | ${Math.round(remainSecs)}s | real:${realPlayers}`);
+    log(`📊 fill:${cachedBotFill}(×${speedMultiplier.toFixed(2)}) | realRate:${realRate.toFixed(3)}/s | gap:${Math.round(gapMs)}ms | ×${timeMultiplier.toFixed(2)} | ${Math.round(remainSecs)}s | real:${realPlayers}`);
 
     if (now - lastBotAddedTime >= gapMs) {
-      await addOneBot(conf, botIds, betVal, pct);
+      await addOneBot(cachedConf, cachedBotIds, cachedBet, cachedPct);
+      // Bot ጨምሮ ስለሆነ conf cache ያጸዳል — ወዲያው ይዘምናል
+      confCacheTime = 0;
     }
 
   } catch (err) {
@@ -432,21 +416,18 @@ async function addOneBot(confData, botIds, bet, pct) {
   log(`✅ Bot: ${botName} → Card #${selectedCards.join(',')} (${cardCount} cards)`);
 }
 
-// ══ STARTUP ══
-log('🚀 Smart Bot v8.0 running');
-log('📌 GET  /admin/bot-fill  → አሁን ያለውን fill አሳያል');
-log('📌 POST /admin/bot-fill  → { fill: 1-100 } speed ይቀይራል');
-log('   1   = እጅግ በጣም ቀርፋፋ (×0.02)');
-log('   50  = ኖርማል baseline  (×1.00)');
-log('   100 = እጅግ በጣም ፈጣን  (×2.00)');
 // ══ SELF-PING (keep-alive) ══
 const SERVICE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-
 function keepAlive() {
   fetch(`${SERVICE_URL}/health`)
     .then(() => log('💓 Keep-alive ping sent'))
     .catch(e => log(`⚠️ Keep-alive failed: ${e.message}`));
 }
+setInterval(keepAlive, 10 * 60 * 1000);
 
-setInterval(keepAlive, 10 * 60 * 1000); // Every 10 min
+// ══ STARTUP ══
+log('🚀 Smart Bot v9.0 running');
+log('📌 Cache TTL: 30s (bet, percent, botFill)');
+log('📌 pollSmartBotEnabled: 30s');
+log('📌 pollRealPlayers: removed — tick ውስጥ ይሰራል');
 pollSmartBotEnabled();
