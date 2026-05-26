@@ -167,8 +167,16 @@ app.get('/events', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
+
+  const heartbeat = setInterval(() => {
+    res.write(': ping\n\n');
+  }, 20000);
+
   sseClients.push(res);
-  req.on('close', () => { sseClients = sseClients.filter(c => c !== res); });
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients = sseClients.filter(c => c !== res);
+  });
 });
 
 function broadcast(data) {
