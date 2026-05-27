@@ -2020,21 +2020,36 @@ app.get('/bot-users', async (req, res) => {
   try {
     const now = Date.now();
     const LIVE_MS = 5 * 60 * 1000;
+    
     const r = await pool.query(
-      'SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false'
+      'SELECT uid, display, username, balance, last_activity, created_at FROM users WHERE is_bot = false'
     );
+    
+    const blockedRes = await pool.query(
+      "SELECT key, value FROM game_state WHERE key LIKE 'users/%/is_blocked'"
+    );
+    const blockedSet = new Set();
+    blockedRes.rows.forEach(row => {
+      if (row.value === 'true') {
+        const uid = row.key.split('/')[1];
+        blockedSet.add(uid);
+      }
+    });
+    
     const users = {};
     r.rows.forEach(row => {
       const lastActivity = row.last_activity ? Number(row.last_activity) : null;
       users[row.uid] = {
-  uid:          row.uid,
-  name:         row.display || row.uid,
-  username:     row.username || '',
-  balance:      Number(row.balance || 0),
-  last_activity: lastActivity,
-  is_live:      lastActivity !== null && (now - lastActivity) < LIVE_MS,
-  joined_at:    row.created_at ? Number(row.created_at) : null,
-};
+        uid:          row.uid,
+        name:         row.display || row.uid,
+        username:     row.username || '',
+        balance:      Number(row.balance || 0),
+        last_activity: lastActivity,
+        is_live:      lastActivity !== null && (now - lastActivity) < LIVE_MS,
+        is_blocked:   blockedSet.has(row.uid),
+        joined_at:    row.created_at ? Number(row.created_at) : null,
+        is_new_read:  false,
+      };
     });
     res.json({ ok: true, users });
   } catch(e) {
