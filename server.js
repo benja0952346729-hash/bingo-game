@@ -87,10 +87,15 @@ app.get('/user-state', async (req, res) => {
     const existing = await pool.query('SELECT uid FROM users WHERE uid=$1', [userId]);
     const isNew = existing.rows.length === 0;
     if (isNew) {
-      await pool.query(
-  'INSERT INTO users(uid,display,balance,is_bot,created_at,username) VALUES($1,$2,20,false,$3,$4)',
-  [userId, displayName, Date.now(), username || '']
-);
+  const wasBlocked = await pool.query(
+    "SELECT value FROM game_state WHERE key=$1",
+    [`users/${userId}/is_blocked`]
+  );
+  const bonus = (wasBlocked.rows.length > 0 && wasBlocked.rows[0].value === 'true') ? 0 : 20;
+  await pool.query(
+    'INSERT INTO users(uid,display,balance,is_bot,created_at,username) VALUES($1,$2,$3,false,$4,$5) ON CONFLICT(uid) DO UPDATE SET display=$2, last_activity=$4, username=$5',
+    [userId, displayName, bonus, Date.now(), username || '']
+  );
     } else {
       await pool.query(
   'UPDATE users SET display=$2, last_activity=$3, username=$4 WHERE uid=$1',
