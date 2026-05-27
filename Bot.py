@@ -1097,6 +1097,20 @@ def send_menu(chat_id):
 # ══════════════════════════════════════════
 # /start COMMAND
 # ══════════════════════════════════════════
+@bot.my_chat_member_handler()
+def handle_chat_member(update):
+    try:
+        uid = str(update.chat.id)
+        new_status = update.new_chat_member.status
+        if new_status == "kicked":
+            requests.post(f"{SERVER}/db-set",
+                json={"path": f"users/{uid}/is_blocked", "value": True}, timeout=5)
+        elif new_status == "member":
+            requests.post(f"{SERVER}/db-set",
+                json={"path": f"users/{uid}/is_blocked", "value": False}, timeout=5)
+    except Exception as e:
+        print(f"chat_member error: {e}")
+
 @bot.message_handler(commands=["start"])
 def cmd_start(m):
     uid  = str(m.chat.id)
@@ -2188,7 +2202,7 @@ while True:
             skip_pending=True,
             timeout=30,
             long_polling_timeout=30,
-            allowed_updates=["message", "callback_query"],
+            allowed_updates=["message", "callback_query", "my_chat_member"],
             restart_on_change=False,
             logger_level=None
         )
