@@ -1936,6 +1936,9 @@ def notification_listener():
     while True:
         try:
             r = requests.get(f"{SERVER}/unread-notifications", timeout=5)
+            if r.status_code != 200 or not r.text.strip():
+                time.sleep(5)
+                continue
             notifs = r.json()
             for n in notifs:
                 if not str(n["uid"]).isdigit(): continue
