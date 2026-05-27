@@ -41,11 +41,9 @@ pool.query(`
 pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT 0;`)
   .then(() => console.log('✅ created_at ready!'))
   .catch(e => console.error('ALTER error:', e.message));
-
-pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT DEFAULT '';`)
-  .then(() => console.log('✅ username ready!'))
-  .catch(e => console.error('ALTER error:', e.message));
-
+pool.query(`UPDATE users SET created_at = EXTRACT(EPOCH FROM NOW()) * 1000 WHERE created_at = 0 OR created_at IS NULL;`)
+  .then(() => console.log('✅ created_at backfill done!'))
+  .catch(e => console.error('Backfill error:', e.message));
 async function getState(key) {
   const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [key]);
   return r.rows.length ? JSON.parse(r.rows[0].value) : null;
