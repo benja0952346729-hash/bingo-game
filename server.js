@@ -93,11 +93,11 @@ app.get('/user-state', async (req, res) => {
   );
 } else {
   // Left ብሎ የተመለሰ — is_blocked check
-  const blockedRes = await pool.query(
+  const wasBlocked = await pool.query(
     "SELECT value FROM game_state WHERE key=$1",
     [`users/${userId}/is_blocked`]
   );
-  if (blockedRes.rows.length > 0 && blockedRes.rows[0].value === 'true') {
+  if (wasBlocked.rows.length > 0 && wasBlocked.rows[0].value === 'true') {
     // is_blocked = false reset ብቻ — bonus የለም
     await pool.query(
       "INSERT INTO game_state(key,value) VALUES($1,'false') ON CONFLICT(key) DO UPDATE SET value='false'",
