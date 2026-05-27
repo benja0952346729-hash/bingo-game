@@ -41,9 +41,8 @@ pool.query(`
 pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at BIGINT DEFAULT 0;`)
   .then(() => console.log('✅ created_at ready!'))
   .catch(e => console.error('ALTER error:', e.message));
-pool.query(`UPDATE users SET created_at = EXTRACT(EPOCH FROM NOW()) * 1000 WHERE created_at = 0 OR created_at IS NULL;`)
-  .then(() => console.log('✅ created_at backfill done!'))
-  .catch(e => console.error('Backfill error:', e.message));
+
+
 async function getState(key) {
   const r = await pool.query('SELECT value FROM game_state WHERE key=$1', [key]);
   return r.rows.length ? JSON.parse(r.rows[0].value) : null;
@@ -87,28 +86,10 @@ app.get('/user-state', async (req, res) => {
     const existing = await pool.query('SELECT uid FROM users WHERE uid=$1', [userId]);
     const isNew = existing.rows.length === 0;
     if (isNew) {
-  await pool.query(
-    'INSERT INTO users(uid,display,balance,is_bot,created_at,username) VALUES($1,$2,20,false,$3,$4)',
-    [userId, displayName, Date.now(), username || '']
-  );
-} else {
-  // Left ብሎ የተመለሰ — is_blocked check
-  const wasBlocked = await pool.query(
-    "SELECT value FROM game_state WHERE key=$1",
-    [`users/${userId}/is_blocked`]
-  );
-  if (wasBlocked.rows.length > 0 && wasBlocked.rows[0].value === 'true') {
-    // is_blocked = false reset ብቻ — bonus የለም
-    await pool.query(
-      "INSERT INTO game_state(key,value) VALUES($1,'false') ON CONFLICT(key) DO UPDATE SET value='false'",
-      [`users/${userId}/is_blocked`]
-    );
-  }
-  const bonus = (wasBlocked.rows.length > 0 && wasBlocked.rows[0].value === 'true') ? 0 : 20;
-  await pool.query(
-    'INSERT INTO users(uid,display,balance,is_bot,created_at,username) VALUES($1,$2,$3,false,$4,$5) ON CONFLICT(uid) DO UPDATE SET display=$2, last_activity=$4, username=$5',
-    [userId, displayName, bonus, Date.now(), username || '']
-  );
+      await pool.query(
+  'INSERT INTO users(uid,display,balance,is_bot,created_at,username) VALUES($1,$2,20,false,$3,$4)',
+  [userId, displayName, Date.now(), username || '']
+);
     } else {
       await pool.query(
   'UPDATE users SET display=$2, last_activity=$3, username=$4 WHERE uid=$1',
@@ -2030,25 +2011,20 @@ app.get('/bot-users', async (req, res) => {
     const now = Date.now();
     const LIVE_MS = 5 * 60 * 1000;
     const r = await pool.query(
-      'SELECT uid, display, balance, last_activity, created_at, username FROM users WHERE is_bot = false'
+      'SELECT uid, display, balance, last_activity FROM users WHERE is_bot = false'
     );
-    const blockedRes = await pool.query(
-      "SELECT key FROM game_state WHERE key LIKE 'users/%/is_blocked' AND value='true'"
-    );
-    const blockedSet = new Set(blockedRes.rows.map(r => r.key.split('/')[1]));
     const users = {};
     r.rows.forEach(row => {
       const lastActivity = row.last_activity ? Number(row.last_activity) : null;
       users[row.uid] = {
-        uid:          row.uid,
-        name:         row.display || row.uid,
-        username:     row.username || '',
-        balance:      Number(row.balance || 0),
-        last_activity: lastActivity,
-        is_live:      lastActivity !== null && (now - lastActivity) < LIVE_MS,
-        joined_at:    row.created_at ? Number(row.created_at) : null,
-        is_blocked:   blockedSet.has(row.uid),
-      };
+  uid:          row.uid,
+  name:         row.display || row.uid,
+  username:     row.username || '',
+  balance:      Number(row.balance || 0),
+  last_activity: lastActivity,
+  is_live:      lastActivity !== null && (now - lastActivity) < LIVE_MS,
+  joined_at:    row.created_at ? Number(row.created_at) : null,
+};
     });
     res.json({ ok: true, users });
   } catch(e) {
